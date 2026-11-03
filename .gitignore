@@ -1,5 +1,7 @@
 # Local-only working material — intentionally not published with the plugin.
-docs/
+# The panel screenshot IS published: the README embeds it as the product shot.
+docs/*
+!docs/sat-panel.png
 
 # Build / package artifacts
 node_modules/
