@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SuperAgentTeam",
+    "description": "A Super-agent Router with human hard gates over Harness Agent Teams: two-stage message filtering, Work Item dispatch, approval gates, and a stall watchdog."
+  }
+}

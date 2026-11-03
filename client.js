@@ -1,0 +1,527 @@
+window.__ModuleLoader__.load({
+  id: '@local/super-agent-team',
+  factory(require) {
+    const React = require('react');
+    const h = React.createElement;
+
+    const NS = '@local/super-agent-team';
+    const VIEW_ID = 'super-agent-team';
+
+    // The Client context and the active translator are filled in by `apply`
+    // and read by the registered component.
+    const CONTEXT_REF = { current: null };
+    let translate = null;
+
+    const DICT = {
+      en: {
+        viewLabel: 'Team',
+        title: 'SuperAgentTeam',
+        subtitle: 'Router · Work Items · Hard gates · Watchdog',
+        members: 'Roster',
+        gates: 'Hard gates',
+        workItems: 'Work board',
+        ledger: 'Router ledger',
+        alerts: 'Watchdog alerts',
+        intakeTitle: 'Dispatch work',
+        intakePlaceholder: 'Describe the work for the Router…',
+        dispatch: 'Dispatch',
+        approve: 'Allow',
+        reject: 'Deny',
+        pending: 'Pending',
+        inProgress: 'In progress',
+        completed: 'Done',
+        empty: 'Nothing here yet.',
+        noTeam: 'No Team roster on this Session yet. Spawn a teammate to start the board.',
+        channelUnavailable: 'The Host control channel is unavailable in this page; the board below is read-only.',
+        channelError: 'The Host control channel failed.',
+        owner: 'Owner',
+        blocked: 'Blocked',
+        none: 'unowned',
+        stats: '{members} members · {running} running · {gates} open gates',
+        gatePending: 'pending',
+        gateApproved: 'approved',
+        gateRejected: 'rejected',
+        routingTo: '→ {target}',
+        escalated: 'escalated to the Lead',
+        refresh: 'Refresh',
+        lastSync: 'Synced {time}',
+      },
+      zh: {
+        viewLabel: '团队',
+        title: 'SuperAgentTeam 超级智能体团队',
+        subtitle: '调度 · 工单 · 硬闸 · 看门狗',
+        members: '成员名册',
+        gates: '人工硬闸',
+        workItems: '工作看板',
+        ledger: '调度流水',
+        alerts: '看门狗告警',
+        intakeTitle: '派活',
+        intakePlaceholder: '描述要交给调度器的工作…',
+        dispatch: '派发',
+        approve: '批准',
+        reject: '否决',
+        pending: '待处理',
+        inProgress: '进行中',
+        completed: '已完成',
+        empty: '暂无内容。',
+        noTeam: '本会话还没有团队名册。先创建一位队友即可开始派活。',
+        channelUnavailable: '当前页面无法连接 Host 控制通道，下面的看板为只读。',
+        channelError: 'Host 控制通道调用失败。',
+        owner: '负责人',
+        blocked: '被阻塞',
+        none: '未认领',
+        stats: '{members} 名成员 · {running} 名在跑 · {gates} 个待审批硬闸',
+        gatePending: '待审批',
+        gateApproved: '已批准',
+        gateRejected: '已否决',
+        routingTo: '→ {target}',
+        escalated: '已升级给 Lead 判定',
+        refresh: '刷新',
+        lastSync: '同步于 {time}',
+      },
+    };
+
+    const css = `
+      .sat-root { display: flex; flex-direction: column; height: 100%; min-height: 0;
+        color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base);
+        font-size: 13px; }
+      .sat-root, .sat-root *, .sat-root *::before, .sat-root *::after { box-sizing: border-box; }
+      .sat-header { display: flex; align-items: center; gap: 12px; padding: 18px 22px 10px; }
+      .sat-title { font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+      .sat-sub { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+      .sat-stats { margin-left: auto; font-size: 12px; color: var(--dsw-alias-label-secondary);
+        font-variant-numeric: tabular-nums; }
+      .sat-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 22px 120px; }
+      .sat-section { margin-top: 20px; }
+      .sat-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+        font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+      .sat-count { font-size: 11px; color: var(--dsw-alias-label-secondary);
+        background: var(--dsw-alias-bg-layer-2); border-radius: 999px; padding: 0 7px; }
+      .sat-card { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 10px; padding: 12px 14px; }
+      .sat-roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+      .sat-member { display: flex; align-items: flex-start; gap: 9px; min-width: 0;
+        background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 10px; padding: 10px 12px; }
+      .sat-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: none;
+        background: var(--dsw-alias-state-idle-primary); }
+      .sat-dot[data-state="running"], .sat-dot[data-state="provisioning"] { background: var(--dsw-alias-brand-primary); }
+      .sat-dot[data-state="failed"] { background: var(--dsw-alias-state-error-primary); }
+      .sat-member-main { min-width: 0; flex: 1; }
+      .sat-member-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+      .sat-badge { font-size: 10px; font-weight: 500; color: var(--dsw-alias-label-secondary);
+        background: var(--dsw-alias-bg-layer-2); border-radius: 4px; padding: 0 5px; }
+      .sat-member-desc { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px;
+        overflow-wrap: anywhere; }
+      .sat-member-status { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+      .sat-col { min-width: 0; background: var(--dsw-alias-bg-layer-1);
+        border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 10px;
+        display: flex; flex-direction: column; gap: 8px; }
+      .sat-col-head { display: flex; align-items: center; justify-content: space-between;
+        font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+      .sat-item { background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 8px; padding: 8px 10px; min-width: 0; }
+      .sat-item-title { font-size: 12px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+      .sat-item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+        font-size: 10px; color: var(--dsw-alias-label-secondary); }
+      .sat-chip { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 4px; padding: 0 5px; }
+      .sat-chip[data-tone="warn"] { color: var(--dsw-alias-state-warn-primary); }
+      .sat-chip[data-tone="error"] { color: var(--dsw-alias-state-error-primary); }
+      .sat-chip[data-tone="success"] { color: var(--dsw-alias-state-success-primary); }
+      .sat-gate { display: flex; align-items: center; gap: 10px; background: var(--dsw-alias-bg-layer-1);
+        border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 10px 12px; }
+      .sat-gate-main { flex: 1; min-width: 0; }
+      .sat-gate-title { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+      .sat-gate-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-btn { appearance: none; border: 1px solid var(--dsw-alias-border-l2); cursor: pointer;
+        background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary);
+        border-radius: 8px; padding: 5px 12px; font-size: 12px; font-family: inherit; white-space: nowrap; }
+      .sat-btn:hover { border-color: var(--dsw-alias-brand-primary); }
+      .sat-btn:disabled { opacity: .5; cursor: default; }
+      .sat-btn-primary { background: var(--dsw-alias-brand-primary); border-color: var(--dsw-alias-brand-primary);
+        color: var(--dsw-alias-bg-base); }
+      .sat-btn-danger { color: var(--dsw-alias-state-error-primary); }
+      .sat-intake { display: flex; gap: 8px; align-items: flex-start; }
+      .sat-textarea { flex: 1; resize: vertical; min-height: 62px; background: var(--dsw-alias-bg-base);
+        border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 10px;
+        font-size: 12px; color: var(--dsw-alias-label-primary); font-family: inherit; outline: none; }
+      .sat-textarea:focus { border-color: var(--dsw-alias-brand-primary); }
+      .sat-ledger { display: flex; flex-direction: column; gap: 6px; }
+      .sat-route { display: flex; gap: 10px; align-items: baseline; font-size: 12px;
+        background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 8px; padding: 7px 10px; }
+      .sat-route-time { font-size: 11px; color: var(--dsw-alias-label-secondary);
+        font-variant-numeric: tabular-nums; flex: none; }
+      .sat-route-subject { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      .sat-route-reason { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+      .sat-notice { display: flex; align-items: flex-start; gap: 8px; font-size: 12px;
+        border-radius: 8px; padding: 9px 11px; background: var(--dsw-alias-bg-layer-1);
+        border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+      .sat-notice[data-tone="warn"] { border-color: var(--dsw-alias-state-warn-primary); }
+      .sat-empty { font-size: 12px; color: var(--dsw-alias-label-secondary); padding: 6px 2px; }
+      .sat-toolbar { display: flex; align-items: center; gap: 10px; }
+      .sat-sync { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+    `;
+
+    /** Pull the text payload out of whatever envelope the Remote returns. */
+    function extractText(raw) {
+      let node = raw;
+      for (let i = 0; i < 8; i += 1) {
+        if (node === null || node === undefined) return '';
+        if (typeof node === 'string') return node;
+        if (typeof node.text === 'string') return node.text;
+        if (node.value && typeof node.value === 'object') { node = node.value; continue; }
+        if (node.result && typeof node.result === 'object') { node = node.result; continue; }
+        if (node.output && typeof node.output === 'object') { node = node.output; continue; }
+        if (node.data && typeof node.data === 'object') { node = node.data; continue; }
+        break;
+      }
+      return typeof raw === 'string' ? raw : '';
+    }
+
+    function Dot({ state }) {
+      return h('span', { className: 'sat-dot', 'data-state': state });
+    }
+
+    function MemberCard({ member, t }) {
+      return h('div', { className: 'sat-member' },
+        h(Dot, { state: member.status }),
+        h('div', { className: 'sat-member-main' },
+          h('div', { className: 'sat-member-name' },
+            member.name,
+            member.role === 'lead' ? h('span', { className: 'sat-badge' }, 'lead') : null),
+          member.description ? h('div', { className: 'sat-member-desc' }, member.description) : null,
+          h('div', { className: 'sat-member-status' },
+            member.status,
+            member.model ? ' · ' + member.model : '')));
+    }
+
+    function WorkItem({ task, t }) {
+      const meta = [];
+      meta.push(h('span', { className: 'sat-chip' }, t('owner') + ': ' + (task.owner || t('none'))));      if (task.blockedBy && task.blockedBy.length) {
+        meta.push(h('span', { className: 'sat-chip', 'data-tone': 'warn' },
+          t('blocked') + ': ' + task.blockedBy.join(', ')));
+      }
+      if (task.gate) {
+        meta.push(h('span', { className: 'sat-chip', 'data-tone': 'warn' }, 'gate:' + task.gate));
+      }
+      if (task.writeScopes && task.writeScopes.length) {
+        meta.push(h('span', { className: 'sat-chip' }, task.writeScopes.join(', ')));
+      }
+      if (task.writeScopeWarnings && task.writeScopeWarnings.length) {
+        task.writeScopeWarnings.forEach((warning, index) => {
+          meta.push(h('span', { className: 'sat-chip', key: 'w' + index, 'data-tone': 'warn' }, warning));
+        });
+      }
+      return h('div', { className: 'sat-item' },
+        h('div', { className: 'sat-item-title' }, task.displaySubject || task.subject),
+        meta.length ? h('div', { className: 'sat-item-meta' }, meta) : null);
+    }
+
+    function Board({ tasks, t }) {
+      const columns = [
+        { id: 'pending', label: t('pending'), status: 'pending' },
+        { id: 'in_progress', label: t('inProgress'), status: 'in_progress' },
+        { id: 'completed', label: t('completed'), status: 'completed' },
+      ];
+      return h('div', { className: 'sat-board' }, columns.map((column) => {
+        const items = tasks.filter((task) => task.status === column.status);
+        return h('div', { className: 'sat-col', key: column.id },
+          h('div', { className: 'sat-col-head' },
+            h('span', null, column.label),
+            h('span', { className: 'sat-count' }, String(items.length))),
+          items.length
+            ? items.map((task) => h(WorkItem, { key: task.id, task, t }))
+            : h('div', { className: 'sat-empty' }, t('empty')));
+      }));
+    }
+
+    function GateRow({ gate, onDecide, busy, t }) {
+      const tone = gate.status === 'approved' ? 'success' : gate.status === 'rejected' ? 'error' : 'warn';
+      return h('div', { className: 'sat-gate' },
+        h('div', { className: 'sat-gate-main' },
+          h('div', { className: 'sat-gate-title' }, gate.subject),
+          h('div', { className: 'sat-gate-meta' },
+            'gate:' + gate.kind + ' · ',
+            h('span', { className: 'sat-chip', 'data-tone': tone }, t('gate' + gate.status.charAt(0).toUpperCase() + gate.status.slice(1))))),
+        gate.status === 'pending'
+          ? h('span', null,
+              h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: busy,
+                onClick: () => onDecide(gate.id, 'approve') }, t('approve')),
+              ' ',
+              h('button', { type: 'button', className: 'sat-btn sat-btn-danger', disabled: busy,
+                onClick: () => onDecide(gate.id, 'reject') }, t('reject')))
+          : null);
+    }
+
+    function RouteRow({ route, t }) {
+      const time = new Date(route.time).toLocaleTimeString();
+      const target = route.stage === 'escalated'
+        ? t('escalated')
+        : (route.target ? t('routingTo', { target: route.target }) : route.target || '');
+      return h('div', { className: 'sat-route' },
+        h('span', { className: 'sat-route-time' }, time),
+        h('span', { className: 'sat-route-subject' }, route.subject),
+        h('span', { className: 'sat-route-reason' }, target),
+        route.reason ? h('span', { className: 'sat-route-reason' }, '· ' + route.reason) : null);
+    }
+
+    /**
+     * The Host control surface of one Team, read through the `super-team`
+     * command. The board itself comes from the shared Session projection, so
+     * it stays live even when this channel is unavailable.
+     */
+    function useHostState(ctx, sessionId, enabled) {      const [state, setState] = React.useState(null);
+      const [error, setError] = React.useState(null);
+      const [busy, setBusy] = React.useState(false);
+      const [syncedAt, setSyncedAt] = React.useState(null);
+
+      const commands = React.useMemo(() => {
+        // The Harness client services are a nested namespace: injecting
+        // `remote` yields that namespace, and reading a leaf of it resolves
+        // the leaf path `remote.commands`, which must be declared too.
+        const namespace = ctx.remote;
+        const found = namespace && namespace.commands;
+        return found && typeof found.execute === 'function' ? found : null;
+      }, [ctx]);
+
+      const run = React.useCallback(async (line) => {
+        if (!commands || !sessionId) return null;
+        const controller = new AbortController();
+        try {
+          const raw = await commands.execute(sessionId, line, [], controller.signal);
+          const text = extractText(raw);
+          setError(null);
+          return text;
+        } catch (reason) {
+          console.error('[super-agent-team] command failed for', line, reason);
+          setError(reason instanceof Error ? reason.message : String(reason));
+          return null;
+        }
+      }, [commands, sessionId]);
+
+      const reload = React.useCallback(async () => {
+        const text = await run('/super-team state');
+        if (text === null) return;
+        try {
+          setState(JSON.parse(text));
+          setSyncedAt(Date.now());
+        } catch {
+          setError(`The Host returned an unreadable board snapshot: ${String(text).slice(0, 200)}`);
+        }
+      }, [run]);
+
+      React.useEffect(() => {
+        if (!enabled) return undefined;
+        reload();
+        const timer = setInterval(reload, 8000);
+        return () => clearInterval(timer);
+      }, [enabled, reload]);
+
+      const decide = React.useCallback(async (taskId, decision) => {
+        setBusy(true);
+        await run('/super-team ' + decision + ' ' + taskId);
+        setBusy(false);
+        await reload();
+      }, [run, reload]);
+
+      const dispatch = React.useCallback(async (text) => {
+        setBusy(true);
+        await run('/super-team intake ' + text);
+        setBusy(false);
+        await reload();
+      }, [run, reload]);
+
+      return { state, error, busy, syncedAt, reload, decide, dispatch, connected: Boolean(commands) };
+    }
+
+    /**
+     * Roster rows for the panel.
+     *
+     * The Host snapshot carries the authoritative roster — live status,
+     * description, model. The Session projection is the fallback when the
+     * Host channel is unavailable, and it uses a different vocabulary:
+     * `phase` instead of `status`, and no description or model at all.
+     */
+    function mapMembers(remoteState, team) {
+      if (remoteState && remoteState.members) return remoteState.members;
+      if (!team || !team.members) return [];
+      return team.members.map((member) => ({
+        name: member.name,
+        role: member.role,
+        status: member.phase === 'failed' ? 'failed'
+          : member.phase === 'provisioning' ? 'provisioning' : 'idle',
+        description: '',
+        model: '',
+        diagnostics: member.error ? [member.error] : [],
+      }));
+    }
+
+    /** Work Items for the panel, with the same source precedence. */
+    function mapTasks(remoteState, team) {
+      if (remoteState && remoteState.tasks) return remoteState.tasks;
+      if (!team || !team.tasks) return [];
+      return team.tasks.map((task) => ({
+        id: task.id,
+        revision: task.revision,
+        subject: task.subject,
+        description: task.description,
+        status: task.status,
+        owner: task.ownerName || null,
+        blockedBy: task.blockedBy || [],
+        ready: task.ready,
+        writeScopes: task.writeScopes || [],
+        writeScopeWarnings: task.writeScopeWarnings || [],
+        gate: null,
+      }));
+    }
+
+    function TeamView({ sessionId, useSession, useSessions }) {
+      const t = translate || makeTranslator();
+      const [draft, setDraft] = React.useState('');
+
+      const leadSessionId = useSession((snapshot) => snapshot.subagent && snapshot.subagent.address
+        ? snapshot.subagent.address.parentSessionId
+        : undefined) || sessionId;
+
+      const team = useSessions((state) => state.projectionsBySession[leadSessionId]
+        ? state.projectionsBySession[leadSessionId].values.agentTeam
+        : undefined);
+
+      const host = useHostState(CONTEXT_REF.current, leadSessionId, true);
+      const remoteState = host.state;
+
+      const members = mapMembers(remoteState, team);
+      const tasks = mapTasks(remoteState, team);
+      const gates = remoteState && remoteState.gates ? remoteState.gates : [];
+      const routes = remoteState && remoteState.routes ? remoteState.routes : [];
+      const alerts = remoteState && remoteState.alerts ? remoteState.alerts : [];
+
+      const running = members.filter((member) => member.status === 'running').length;
+      const openGates = gates.filter((gate) => gate.status === 'pending').length;
+
+      const submit = () => {
+        const text = draft.trim();
+        if (!text) return;
+        setDraft('');
+        host.dispatch(text);
+      };
+
+      return h('div', { className: 'sat-root' },
+        h('style', null, css),
+        h('div', { className: 'sat-header' },
+          h('div', null,
+            h('div', { className: 'sat-title' }, t('title')),
+            h('div', { className: 'sat-sub' }, t('subtitle'))),
+          h('div', { className: 'sat-stats' },
+            t('stats', { members: members.length, running, gates: openGates }))),
+        h('div', { className: 'sat-body' },
+          host.error
+            ? h('div', { className: 'sat-notice', 'data-tone': 'warn' }, host.error)
+            : (host.connected ? null : h('div', { className: 'sat-notice', 'data-tone': 'warn' }, t('channelUnavailable'))),
+
+          h('section', { className: 'sat-section' },
+            h('div', { className: 'sat-section-head' }, t('intakeTitle')),
+            h('div', { className: 'sat-intake' },
+              h('textarea', { className: 'sat-textarea', value: draft, placeholder: t('intakePlaceholder'),
+                onChange: (event) => setDraft(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submit(); }
+                } }),
+              h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: host.busy || !host.connected,
+                onClick: submit }, t('dispatch')))),
+
+          h('section', { className: 'sat-section' },
+            h('div', { className: 'sat-section-head' },
+              t('members'),
+              members.length ? h('span', { className: 'sat-count' }, String(members.length)) : null),
+            members.length
+              ? h('div', { className: 'sat-roster' }, members.map((member) => h(MemberCard, { key: member.name, member, t })))
+              : h('div', { className: 'sat-empty' }, t('noTeam'))),
+
+          gates.length
+            ? h('section', { className: 'sat-section' },
+                h('div', { className: 'sat-section-head' },
+                  t('gates'),
+                  h('span', { className: 'sat-count' }, String(gates.length))),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+                  gates.map((gate) => h(GateRow, { key: gate.id, gate, busy: host.busy, onDecide: host.decide, t }))))
+            : null,
+
+          h('section', { className: 'sat-section' },
+            h('div', { className: 'sat-section-head' }, t('workItems')),
+            tasks.length
+              ? h(Board, { tasks, t })
+              : h('div', { className: 'sat-empty' }, t('empty'))),
+
+          alerts.length
+            ? h('section', { className: 'sat-section' },
+                h('div', { className: 'sat-section-head' }, t('alerts')),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                  alerts.map((alert, index) => h('div', { className: 'sat-notice', key: index },
+                    alert.kind + ' · ' + (alert.member || alert.owner || alert.taskId || '') + ' · ' + (alert.detail || '')))))
+            : null,
+
+          routes.length
+            ? h('section', { className: 'sat-section' },
+                h('div', { className: 'sat-section-head' },
+                  t('ledger'),
+                  h('span', { className: 'sat-count' }, String(routes.length))),
+                h('div', { className: 'sat-ledger' }, routes.map((route, index) => h(RouteRow, { key: index, route, t }))))
+            : null,
+
+          h('section', { className: 'sat-section' },
+            h('div', { className: 'sat-toolbar' },
+              h('button', { type: 'button', className: 'sat-btn', onClick: host.reload }, t('refresh')),
+              host.syncedAt
+                ? h('span', { className: 'sat-sync' }, t('lastSync', { time: new Date(host.syncedAt).toLocaleTimeString() }))
+                : null))));
+    }
+
+    /** Locale bridge: prefer the registered dictionary, fall back to English. */
+    function makeTranslator() {
+      let dictionary = DICT.en;
+      const translate = (key, params) => {
+        let text = dictionary[key] !== undefined ? dictionary[key] : (DICT.en[key] !== undefined ? DICT.en[key] : key);
+        if (params) {
+          for (const [name, value] of Object.entries(params)) {
+            text = text.split('{' + name + '}').join(String(value));
+          }
+        }
+        return text;
+      };
+      translate.setLocale = (locale) => { dictionary = DICT[locale] || DICT.en; };
+      return translate;
+    }
+
+    // The Client context is provided by the slot owner, not by a global.
+
+    return {
+      inject: ['slots', 'locale', 'remote', 'remote.commands'],
+      apply(ctx) {
+        CONTEXT_REF.current = ctx;
+
+        // Register the dictionary, then prefer the framework's bound
+        // translator so the panel follows the active locale.
+        try {
+          ctx.effect(() => ctx.locale.register(NS, { en: DICT.en, zh: DICT.zh }), 'super-agent-team.locale()');
+        } catch {
+          try { ctx.effect(() => ctx.locale.register(NS, 'en', DICT.en), 'super-agent-team.localeEn()'); } catch { /* no dictionary */ }
+        }
+        try {
+          const bound = ctx.locale.bind(NS);
+          if (typeof bound === 'function') translate = bound;
+        } catch { /* keep the built-in dictionary */ }
+
+        ctx.slots.inject('conversation.view', () => ctx.slots.register({
+          name: 'conversation.view',
+          id: VIEW_ID,
+          order: 20,
+          label: () => (translate ? translate('viewLabel') : 'Team'),
+        }, TeamView));
+      },
+    };
+  },
+});

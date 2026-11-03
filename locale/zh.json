@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SuperAgentTeam 超级智能体团队",
+    "description": "基于 Agent Teams 的 Super-agent 调度层：两级消息过滤、Work Item 自动派活、人工硬闸审批与停滞看门狗。"
+  }
+}
