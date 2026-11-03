@@ -37,6 +37,7 @@ function makeAgentTeams() {
   const members = [
     { id: 'agent-lead', name: 'lead', role: 'lead', status: 'running', description: '', diagnostics: [] },
     { id: 'agent-t', name: 'tester', role: 'teammate', status: 'running', description: 'Run end-to-end 测试 and QA 验收.', diagnostics: [] },
+    { id: 'agent-r', name: 'reviewer', role: 'teammate', status: 'running', description: 'Review code and check diffs.', diagnostics: [] },
   ];
   return {
     tasks,
@@ -445,15 +446,20 @@ check('the duplicate points at the first Work Item',
   secondDispatch.taskId === firstDispatch.taskId,
   `${secondDispatch.taskId} vs ${firstDispatch.taskId}`);
 
-// Characterisation, not endorsement: `dispatchKey` can tell two workers
-// apart, but `intake` compares on subject and brief only, so naming a
-// worker does not make a dispatch a different one.
+// The same brief aimed at the same worker is the same work: one Work Item.
 const targetedDispatch = await intakeCall({ subject: '另一件事', description: '另一个 brief', target: 'tester' });
 check('an explicitly targeted dispatch is created', typeof targetedDispatch.taskId === 'string', JSON.stringify(targetedDispatch));
 const targetedAgain = await intakeCall({ subject: '另一件事', description: '另一个 brief', target: 'tester' });
-check('naming a worker does not create a second Work Item',
+check('the same brief for the same worker is not a second Work Item',
   targetedAgain.deduplicated === true && targetedAgain.taskId === targetedDispatch.taskId,
   JSON.stringify(targetedAgain));
+
+// The same brief aimed at a *different* worker is different work: the Lead
+// may want both the tester and the reviewer to run it.
+const otherWorker = await intakeCall({ subject: '另一件事', description: '另一个 brief', target: 'reviewer' });
+check('the same brief for another worker is a second Work Item',
+  otherWorker.deduplicated !== true && otherWorker.taskId !== targetedDispatch.taskId,
+  JSON.stringify(otherWorker));
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
 process.exit(failures.length ? 1 : 0);

@@ -218,8 +218,9 @@ function packageOf(task) {
 
 /**
  * The identity of a dispatch. Two requests are the same work only when the
- * title, the target and the brief all match — matching on the title alone
- * would swallow the second half of a legitimate decomposition.
+ * title, the worker and the brief all match: matching on the title alone
+ * would swallow the second half of a legitimate decomposition, and dropping
+ * the worker would swallow "run this on both the tester and the reviewer".
  */
 function dispatchKey(subject, target, description) {
   return `${String(subject ?? '').trim()}::${target ?? ''}::${String(description ?? '').trim()}`
@@ -374,21 +375,30 @@ export function apply(ctx) {
     // the first one is still waiting for an owner. A Work Item that somebody
     // already picked up, or that is done, does not block a fresh request —
     // re-running the same check after a fix is legitimate work. The identity
-    // is the title plus the brief, so a decomposition into different items is
-    // never swallowed. A package asks for its items explicitly and skips
-    // this check entirely.
+    // is the title, the worker and the brief: the brief alone would swallow
+    // the second half of a legitimate decomposition, and the brief plus the
+    // title would swallow "run this on both the tester and the reviewer". A
+    // package asks for its items explicitly and skips this check entirely.
+    //
+    // The worker of a waiting Work Item is not recorded on the Work Item
+    // itself, so it is read back from the routing ledger. After a reload the
+    // ledger is empty and the brief alone decides again, which can only
+    // decline to create a second item, never create one.
     const dedupe = options.dedupe !== false
-    const key = dispatchKey(request.subject, '', request.description)
+    const targetName = placement ? placement.target.name : 'lead'
+    const routedTarget = (taskId) =>
+      ledger(teamId).routes.find((route) => route.taskId === taskId)?.target ?? ''
+    const key = dispatchKey(request.subject, targetName, request.description)
     const live = dedupe
       ? ctx.agentTeams.listTasks(agent).find((task) =>
         task.status === 'pending' && !task.ownerName
-        && dispatchKey(task.subject, '', task.description) === key)
+        && dispatchKey(task.subject, routedTarget(task.id), task.description) === key)
       : undefined
     if (live) {
       pushRoute(teamId, {
         subject: request.subject,
         stage: 'duplicate',
-        target: placement ? placement.target.name : 'lead',
+        target: targetName,
         reason: 'an identical unclaimed Work Item already exists; no second one was created',
         taskId: live.id,
       })
@@ -397,7 +407,7 @@ export function apply(ctx) {
         escalated: false,
         deduplicated: true,
         stage: 'duplicate',
-        target: placement ? placement.target.name : 'lead',
+        target: targetName,
         taskId: live.id,
         subject: request.subject,
         reason: 'an identical unclaimed Work Item already exists; no second one was created',
@@ -797,7 +807,7 @@ export function apply(ctx) {
     const ready = derivePackages(tasks).filter((entry) => entry.status === 'settled-by-policy')
     for (const entry of ready) {
       try {
-        await settlePackage(agent, entry.id, `all ${entry.done}/${entry.total} item(s) landed`)
+        await settlePackage(agent, entry.id, `${entry.completion} ${entry.done}/${entry.total} item(s) landed`)
       } catch {
         /* a package that cannot settle now is retried on the next scan */
       }
@@ -1127,11 +1137,30 @@ export function apply(ctx) {
             if (!argument) return { kind: 'error', text: 'delete needs a Work Item id.' }
             const view = ctx.agentTeams.getTask(agent, argument)
             if (!view) return { kind: 'error', text: `No Work Item "${argument}" on this board.` }
+            // Deleting a package takes its items with it: leaving them
+            // behind would scatter them across the board as orphans.
+            const record = packageOf(view)
+            const items = record
+              ? ctx.agentTeams.listTasks(agent).filter((task) => record.children.includes(task.id))
+              : []
             await ctx.agentTeams.updateTask(agent, {
               taskId: argument,
               expectedRevision: view.revision,
               action: 'delete',
             })
+            for (const item of items) {
+              try {
+                const current = ctx.agentTeams.getTask(agent, item.id)
+                if (!current || current.status === 'deleted') continue
+                await ctx.agentTeams.updateTask(agent, {
+                  taskId: item.id,
+                  expectedRevision: current.revision,
+                  action: 'delete',
+                })
+              } catch {
+                /* an item that cannot be removed now stays on the board */
+              }
+            }
             pushRoute(requireMember(agent, 'super-team').id, {
               subject: gateDisplayText(view.subject),
               stage: 'human',
@@ -1139,7 +1168,12 @@ export function apply(ctx) {
               reason: `Work Item ${argument} was deleted by the human`,
               taskId: argument,
             })
-            return { kind: 'success', text: `Work Item ${argument} deleted.` }
+            return {
+              kind: 'success',
+              text: items.length
+                ? `Work Item ${argument} and ${items.length} item(s) deleted.`
+                : `Work Item ${argument} deleted.`,
+            }
           }
           case 'clean-scopes': {
             const result = await cleanGateScopes(agent)

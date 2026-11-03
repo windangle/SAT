@@ -202,7 +202,9 @@ plugin_manager({ action: "install_bundle",
 | `team_gate_request` | 在合并 / 发版 / 敏感操作前举一道人工硬闸 | `kind`、`subject`、`detail` |
 | `team_watchdog` | 主动查失败成员、停滞工单和无人认领的活 | 无 |
 
-**派活是幂等的**：标题与说明都相同、且待处理无人认领的工单不会被重复创建（返回 `deduplicated: true`），所以误点两次「派发」不会建出两张一样的单。但已被认领或已完成的同名工单**不拦截**——修完 bug 后重跑同一项检查是正当工作。去重认的是「同一件事」（标题 + 说明），不是「同一个标题」，所以拆解出来的不同子项不会互相吞。
+**派活是幂等的**：标题、**目标队友**与说明都相同、且待处理无人认领的工单不会被重复创建（返回 `deduplicated: true`），所以误点两次「派发」不会建出两张一样的单。但已被认领或已完成的同名工单**不拦截**——修完 bug 后重跑同一项检查是正当工作。
+
+去重认的是「同一件事」：**标题 + 目标 + 说明**。只看标题会吞掉拆解出来的另一半；不看目标则会吞掉「同一件事让 tester 和 reviewer 都做一遍」——Lead 明确指派给不同队友时，第二份工单照建不误。
 
 ### 给人：控制面
 
@@ -245,10 +247,11 @@ node test/contract.test.mjs  # Host 任务状态机契约测试（闸门 + 工�
 node test/render.test.mjs    # 面板渲染路径的离线测试
 ```
 
-共 **90+ 项断言**，全部通过。
+共 **140 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
-- **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败。
+- **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
+- **`host.test.mjs`** 覆盖纯函数：技能词的词边界匹配、队友点名的整词规则、工作包标记的格式与往返、`dispatchKey` 的身份语义。
 
 ---
 
