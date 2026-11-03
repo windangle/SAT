@@ -232,5 +232,228 @@ const deleted = await call(`delete ${toDelete.id}`);
 check('the delete succeeds', deleted.kind === 'success', JSON.stringify(deleted));
 check('the Work Item is gone', agentTeams.getTask(leadAgent, toDelete.id) === undefined);
 
+/* ---------------------------------------------------------- packages ---- */
+
+console.log('a package ties its items together');
+const planned = await call('plan 交付 v0.1.0 | 写实现 | 写测试');
+check('the plan succeeds', planned.kind === 'success', JSON.stringify(planned));
+const planText = planned.text;
+check('the plan reports a package', /Package task-\d+/.test(planText), planText);
+state = JSON.parse((await call('state')).text);
+check('the board carries the package', Array.isArray(state.packages) && state.packages.length >= 1,
+  JSON.stringify(state.packages));
+const pkg = state.packages[state.packages.length - 1];
+check('the package records its completion policy', pkg.completion === 'all', JSON.stringify(pkg));
+check('the package lists its items', pkg.total >= 1, JSON.stringify(pkg));
+check('a package row is marked as a package',
+  state.tasks.find((task) => task.id === pkg.id)?.isPackage === true);
+
+console.log('the package settles when its policy is satisfied');
+// complete every child of the package
+for (const childId of pkg.children) {
+  const child = agentTeams.getTask(leadAgent, childId);
+  if (!child || child.status === 'completed') continue;
+  const claimed = await agentTeams.updateTask(leadAgent, { taskId: childId, expectedRevision: child.revision, action: 'claim' });
+  await agentTeams.updateTask(leadAgent, { taskId: childId, expectedRevision: claimed.revision, action: 'complete' });
+}
+state = JSON.parse((await call('state')).text);
+const settled = state.packages.find((entry) => entry.id === pkg.id);
+check('the package counts every item', settled.done === settled.total, JSON.stringify(settled));
+check('the package Work Item is completed',
+  agentTeams.getTask(leadAgent, pkg.id).status === 'completed',
+  agentTeams.getTask(leadAgent, pkg.id).status);
+
+console.log('a manual package waits for a human');
+const manual = await call('plan manual: 需要人工拍板的交付 | 合规检查');
+check('the manual plan succeeds', manual.kind === 'success', JSON.stringify(manual));
+const manualState = JSON.parse((await call('state')).text);
+const manualPkg = manualState.packages[manualState.packages.length - 1];
+check('the manual package is marked manual', manualPkg.completion === 'manual',
+  JSON.stringify(manualPkg));
+
+console.log('the model cannot settle a manual package');
+const manualTask = agentTeams.getTask(leadAgent, manualPkg.id);
+const manualDenial = guard({ name: 'team_task_update', agent: leadAgent,
+  arguments: { task_id: manualPkg.id, expected_revision: manualTask.revision, action: 'complete' } });
+check('the guard denies a manual package', typeof manualDenial === 'string', String(manualDenial));
+
+console.log('an "any" package settles with one item');
+await call('plan any: 至少一条路能走通 | 方案 A | 方案 B');
+state = JSON.parse((await call('state')).text);
+const anyPkg = state.packages[state.packages.length - 1];
+check('the any package records its policy', anyPkg.completion === 'any', JSON.stringify(anyPkg));
+const anyChild = agentTeams.getTask(leadAgent, anyPkg.children[0]);
+if (anyChild.status !== 'completed') {
+  const claimed = await agentTeams.updateTask(leadAgent, { taskId: anyChild.id, expectedRevision: anyChild.revision, action: 'claim' });
+  await agentTeams.updateTask(leadAgent, { taskId: anyChild.id, expectedRevision: claimed.revision, action: 'complete' });
+}
+state = JSON.parse((await call('state')).text);
+const anySettled = state.packages.find((entry) => entry.id === anyPkg.id);
+check('the any package settles on the first item', anySettled.status === 'completed', JSON.stringify(anySettled));
+
+console.log('the human can close a manual package');
+const humanClose = await call(`complete ${manualPkg.id}`);
+check('the human close succeeds', humanClose.kind === 'success', JSON.stringify(humanClose));
+check('the manual package is completed',
+  agentTeams.getTask(leadAgent, manualPkg.id).status === 'completed',
+  agentTeams.getTask(leadAgent, manualPkg.id).status);
+
+/* ------------------------------------------- the model side of a plan --- */
+
+console.log('the model plans a package with the team_plan tool');
+const planTool = registeredTools.find((tool) => tool.name === 'team_plan');
+check('the plugin registered the team_plan tool', typeof planTool?.execute === 'function');
+const planToolCall = (args) => planTool.execute(args, { agent: leadAgent, signal: new AbortController().signal });
+
+/** Land one Work Item the way a worker does: claim it, then complete it. */
+async function planLandItem(taskId) {
+  const task = agentTeams.getTask(leadAgent, taskId);
+  if (!task || task.status === 'completed') return;
+  const claimed = await agentTeams.updateTask(leadAgent, { taskId, expectedRevision: task.revision, action: 'claim' });
+  await agentTeams.updateTask(leadAgent, { taskId, expectedRevision: claimed.revision, action: 'complete' });
+}
+
+/** The planBoard as the panel and the model see it. */
+const planBoard = async () => JSON.parse((await call('state')).text);
+const planPackageEntry = (planSnapshot, id) => planSnapshot.packages.find((planEntry) => planEntry.id === id);
+
+console.log('an "all" package waits for every item');
+const planAll = await planToolCall({
+  goal: '交付 v0.2.0',
+  completion: 'all',
+  items: [{ subject: '写实现', description: '写实现' }, { subject: '写测试', description: '写测试' }],
+});
+check('the tool returns a package id', typeof planAll.packageId === 'string', JSON.stringify(planAll));
+check('the tool reports the policy', planAll.completion === 'all', JSON.stringify(planAll));
+check('the tool lists one child per item', planAll.children.length === 2, JSON.stringify(planAll.children));
+let planSnapshot = await planBoard();
+let planEntry = planPackageEntry(planSnapshot, planAll.packageId);
+check('an all package starts open', planEntry?.status === 'open', JSON.stringify(planEntry));
+check('an all package counts nothing done yet', planEntry?.done === 0 && planEntry?.total === 2, JSON.stringify(planEntry));
+
+await planLandItem(planAll.children[0]);
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planAll.packageId);
+check('an all package stays open while one item is missing', planEntry?.status === 'open', JSON.stringify(planEntry));
+check('an all package counts the landed item', planEntry?.done === 1, JSON.stringify(planEntry));
+check('an all package is not completed while one item is missing',
+  agentTeams.getTask(leadAgent, planAll.packageId).status !== 'completed',
+  agentTeams.getTask(leadAgent, planAll.packageId).status);
+
+await planLandItem(planAll.children[1]);
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planAll.packageId);
+check('an all package settles when every item lands', planEntry?.status === 'completed', JSON.stringify(planEntry));
+check('the all package Work Item is completed',
+  agentTeams.getTask(leadAgent, planAll.packageId).status === 'completed',
+  agentTeams.getTask(leadAgent, planAll.packageId).status);
+
+console.log('an "any" package settles on the first item');
+const planAny = await planToolCall({
+  goal: '至少一条路能走通',
+  completion: 'any',
+  items: [{ subject: '方案 A', description: '方案 A' }, { subject: '方案 B', description: '方案 B' }],
+});
+check('the tool reports the any policy', planAny.completion === 'any', JSON.stringify(planAny));
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planAny.packageId);
+check('an any package starts open', planEntry?.status === 'open', JSON.stringify(planEntry));
+await planLandItem(planAny.children[0]);
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planAny.packageId);
+check('an any package settles on the first item', planEntry?.status === 'completed', JSON.stringify(planEntry));
+check('an any package counts the landed item', planEntry?.done === 1, JSON.stringify(planEntry));
+check('the any package Work Item is completed',
+  agentTeams.getTask(leadAgent, planAny.packageId).status === 'completed',
+  agentTeams.getTask(leadAgent, planAny.packageId).status);
+
+console.log('a "manual" package waits for a human');
+const planManual = await planToolCall({
+  goal: '需要人工拍板的交付',
+  completion: 'manual',
+  items: [{ subject: '合规检查', description: '合规检查' }],
+});
+check('the tool reports the manual policy', planManual.completion === 'manual', JSON.stringify(planManual));
+await planLandItem(planManual.children[0]);
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planManual.packageId);
+check('a manual package waits for a human once its items land', planEntry?.status === 'awaiting-human', JSON.stringify(planEntry));
+check('a manual package is not settled by the policy',
+  agentTeams.getTask(leadAgent, planManual.packageId).status !== 'completed',
+  agentTeams.getTask(leadAgent, planManual.packageId).status);
+const planManualView = agentTeams.getTask(leadAgent, planManual.packageId);
+const planManualDenial = guard({ name: 'team_task_update', agent: leadAgent,
+  arguments: { task_id: planManual.packageId, expected_revision: planManualView.revision, action: 'complete' } });
+check('the model cannot settle a manual package', typeof planManualDenial === 'string', String(planManualDenial));
+const planHumanClose = await call(`complete ${planManual.packageId}`);
+check('the human closes a manual package', planHumanClose.kind === 'success', JSON.stringify(planHumanClose));
+planSnapshot = await planBoard();
+planEntry = planPackageEntry(planSnapshot, planManual.packageId);
+check('a closed manual package reads as completed', planEntry?.status === 'completed', JSON.stringify(planEntry));
+
+console.log('the model side refuses a package it cannot plan');
+let planRefused = '';
+try { await planToolCall({ goal: '空包', items: [] }); } catch (error) {
+  planRefused = error instanceof Error ? error.message : String(error);
+}
+check('a package without items is refused', /at least one item/.test(planRefused), planRefused);
+
+console.log('an item without a subject is dropped');
+const planPartial = await planToolCall({
+  goal: '部分条目',
+  completion: 'all',
+  items: [{ subject: '有效条目', description: '有效条目' }, { description: '没有标题' }],
+});
+check('an item without a subject is dropped', planPartial.children.length === 1, JSON.stringify(planPartial.children));
+
+console.log('an unknown completion falls back to all');
+const planFallback = await planToolCall({
+  goal: '兜底',
+  completion: 'sometimes',
+  items: [{ subject: '条目', description: '条目' }],
+});
+check('an unknown completion falls back to all', planFallback.completion === 'all', planFallback.completion);
+
+console.log('an item can name its worker');
+const planTargeted = await planToolCall({
+  goal: '指定人',
+  completion: 'all',
+  items: [{ subject: '请 tester 复核', description: '请 tester 复核', target: 'tester' }],
+});
+check('an explicit target bypasses the rule filter',
+  planTargeted.items[0]?.target === 'tester',
+  JSON.stringify(planTargeted.items[0]));
+
+console.log('every completion policy is covered');
+const planCovered = new Set([planAll.completion, planAny.completion, planManual.completion]);
+check('all three completion policies are exercised',
+  ['all', 'any', 'manual'].every((policy) => planCovered.has(policy)),
+  [...planCovered].join(','));
+
+/* --------------------------------------- the dedupe identity in use ---- */
+
+console.log('the dedupe identity of a dispatch');
+const intakeTool = registeredTools.find((tool) => tool.name === 'team_intake');
+const intakeCall = (args) => intakeTool.execute(args, { agent: leadAgent, signal: new AbortController().signal });
+const firstDispatch = await intakeCall({ subject: '同一件事', description: '同一个 brief' });
+check('the first dispatch creates a Work Item',
+  typeof firstDispatch.taskId === 'string' && firstDispatch.deduplicated !== true,
+  JSON.stringify(firstDispatch));
+const secondDispatch = await intakeCall({ subject: '同一件事', description: '同一个 brief' });
+check('the identical dispatch is deduplicated', secondDispatch.deduplicated === true, JSON.stringify(secondDispatch));
+check('the duplicate points at the first Work Item',
+  secondDispatch.taskId === firstDispatch.taskId,
+  `${secondDispatch.taskId} vs ${firstDispatch.taskId}`);
+
+// Characterisation, not endorsement: `dispatchKey` can tell two workers
+// apart, but `intake` compares on subject and brief only, so naming a
+// worker does not make a dispatch a different one.
+const targetedDispatch = await intakeCall({ subject: '另一件事', description: '另一个 brief', target: 'tester' });
+check('an explicitly targeted dispatch is created', typeof targetedDispatch.taskId === 'string', JSON.stringify(targetedDispatch));
+const targetedAgain = await intakeCall({ subject: '另一件事', description: '另一个 brief', target: 'tester' });
+check('naming a worker does not create a second Work Item',
+  targetedAgain.deduplicated === true && targetedAgain.taskId === targetedDispatch.taskId,
+  JSON.stringify(targetedAgain));
+
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
 process.exit(failures.length ? 1 : 0);

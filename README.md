@@ -68,7 +68,35 @@ SuperAgentTeam 把派活与审批都落成代码和状态机，**行为可复现
 
 依赖 DAG 因此形成「带硬闸的交付闭环」：依赖未全部完成的工单**不可认领**（`ready: false`）。
 
-### 3. 人工硬闸
+### 3. 工作包（Work Package）：把一次交办拆成几块
+
+Lead 收到一个复杂请求时，可以调用 `team_plan` 把它**拆成若干子工单**，并用一张「包工单」把它们绑在一起：
+
+```
+team_plan({
+  goal: "交付 v0.2：工作包能力",
+  completion: "all",              // 完成标准由 Lead 按实际情况选
+  items: [
+    { subject: "补齐工作包的模型侧测试", description: "…" },
+    { subject: "面板侧：工作包区块与人工确认按钮", description: "…" },
+    { subject: "文档侧：更新方案与 README", description: "…" },
+  ],
+})
+```
+
+每个子项**各自走 Router**（独立路由到合适的队友），包工单本身也是一张工单，于是**「我交办的一件事」和「它被拆成的几块」在看板上是连着的**。
+
+**完成标准由 Lead 按包指定**，因为合适的规则取决于工作性质：
+
+| 策略 | 包什么时候算完成 | 谁来关 |
+|---|---|---|
+| `all` | 全部子项都落地 | 插件自动结算 |
+| `any` | 有一条可接受的路走通即可 | 插件自动结算 |
+| `manual` | 子项都做完了，但**由人拍板**收口 | **只能人关**——模型改不动它（守卫同硬闸） |
+
+**关联怎么存**：包工单的描述里带一段紧凑标记（`@@sat-package completion=… children=…`），**整棵树就在原生任务表里**。没有额外存储、没有独立表——插件重载后直接从看板重建，重载不丢。
+
+### 4. 人工硬闸
 
 - 一个闸门 = **一张主题以 `[GATE:<kind>]` 开头的工单**。
 - 需要该闸门的工单把闸门 id 填进 `blockedBy` → 原生 DAG **拒绝释放**它。
@@ -77,7 +105,7 @@ SuperAgentTeam 把派活与审批都落成代码和状态机，**行为可复现
 - **批准与否都是终态**：批准 = 完成；否决 = 完成 + 主题标 `REJECTED`——人说了「不」，工单该被重新规划，而不是永远等下去。
 - 判定结论**持久化在工单上**，插件重载 / HMR 后闸门区块、按钮与结论都还在。
 
-### 4. 看门狗（Watchdog）
+### 5. 看门狗（Watchdog）
 
 每 60 秒自动扫描，模型也可随时主动触发。捕获三类异常：
 
@@ -89,13 +117,14 @@ SuperAgentTeam 把派活与审批都落成代码和状态机，**行为可复现
 
 告警列表**每次扫描重建**而不是追加：同一个异常不会在账本里堆成几十份重复条目，恢复了的异常自动消失。
 
-### 5. 团队面板（Control Deck）
+### 6. 团队面板（Control Deck）
 
 注册为会话内的一个 View 标签页——Web GUI 对话区的「**团队**」页：
 
 - **派活输入框**：把手头的事直接丢给 Router
 - **成员名册**：实时状态、模型、职责描述
-- **工作看板**：待处理 / 进行中 / 已完成三列
+- **工作包**：包目标、完成策略徽标、`x/y 已完成` 进度、嵌套的子项；`manual` 的包带「人工确认并关闭」按钮
+- **工作看板**：待处理 / 进行中 / 已完成三列（包与其子项在上面，看板只放独立工单）
 - **人工硬闸**：待批闸门 + 批准 / 否决按钮
 - **调度流水**：每次路由决策的时间、主题、目标与理由（升级给 Lead 的会标成「已升级给 Lead 判定」）
 - **看门狗告警**
@@ -163,26 +192,29 @@ plugin_manager({ action: "install_bundle",
 > `plugin_manager` 的每次调用都需要审批——只在该动作的结果会影响下一步时才调它。
 > 同一个路径重复安装会报 `already-installed`，先 `remove_bundle` 再装。
 
-### 给模型：四个工具
+### 给模型：五个工具
 
 | 工具 | 用途 | 参数 |
 |---|---|---|
 | `team_intake` | 把一条工作请求交给 Router 判定归属 | `subject`、`description`（必填）；`target`（跳过规则过滤直接指定队友）、`write_scopes`（本次预计修改的路径前缀） |
+| `team_plan` | 把一次交办**拆成若干子项**，并用一张包工单把它们绑在一起 | `goal`、`items`（必填）；`completion`（`all` / `any` / `manual`，由 Lead 按实际情况选）、`description` |
 | `team_status` | 名册、看板、待批闸门、调度流水 | 无 |
 | `team_gate_request` | 在合并 / 发版 / 敏感操作前举一道人工硬闸 | `kind`、`subject`、`detail` |
 | `team_watchdog` | 主动查失败成员、停滞工单和无人认领的活 | 无 |
 
-**派活是幂等的**：同名、待处理且无人认领的工单不会被重复创建（返回 `deduplicated: true`），所以误点两次「派发」不会建出两张一样的单。但已被认领或已完成的同名工单**不拦截**——修完 bug 后重跑同一项检查是正当工作。
+**派活是幂等的**：标题与说明都相同、且待处理无人认领的工单不会被重复创建（返回 `deduplicated: true`），所以误点两次「派发」不会建出两张一样的单。但已被认领或已完成的同名工单**不拦截**——修完 bug 后重跑同一项检查是正当工作。去重认的是「同一件事」（标题 + 说明），不是「同一个标题」，所以拆解出来的不同子项不会互相吞。
 
 ### 给人：控制面
 
 ```
-/super-team state                  # 看整块看板（JSON）
-/super-team intake <需求>          # 手动丢给 Router
-/super-team approve task-1         # 批准闸门 —— 模型走不通这条路
-/super-team reject task-1          # 否决闸门
-/super-team delete task-1          # 删除工单
-/super-team clean-scopes           # 清理旧版本闸门遗留的写范围标记
+/super-team state                       # 看整块看板（JSON）
+/super-team intake <需求>               # 手动丢给 Router
+/super-team plan <目标> | <子项> | …     # 拆成工作包（可加 all: / any: / manual: 前缀）
+/super-team approve task-1              # 批准闸门 —— 模型走不通这条路
+/super-team reject task-1               # 否决闸门
+/super-team complete task-20            # 人来收口一个 manual 包
+/super-team delete task-1               # 删除工单
+/super-team clean-scopes                # 清理旧版本闸门遗留的写范围标记
 ```
 
 或者直接在会话「团队」标签页里点按钮。
@@ -208,15 +240,15 @@ plugin_manager({ action: "install_bundle",
 ## 测试
 
 ```bash
-node test/host.test.mjs      # 规则层与闸门语义的单元测试（24 项断言）
-node test/contract.test.mjs  # Host 任务状态机契约测试（24 项断言）
-node test/render.test.mjs    # 面板渲染路径的离线测试（25 项断言）
+node test/host.test.mjs      # 规则层与闸门语义的单元测试
+node test/contract.test.mjs  # Host 任务状态机契约测试（闸门 + 工作包全链路）
+node test/render.test.mjs    # 面板渲染路径的离线测试
 ```
 
-共 **73 项断言**，全部通过。
+共 **90+ 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
-- **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 全链路，并断言守卫、判定标记与遗留范围清理。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 7 条失败。
+- **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败。
 
 ---
 
@@ -224,7 +256,8 @@ node test/render.test.mjs    # 面板渲染路径的离线测试（25 项断言�
 
 诚实说明：
 
-- **调度流水与看门狗告警存在插件内存里**，重载即清空（看板、名册与闸门结论不受影响）。
+- **调度流水与看门狗告警存在插件内存里**，重载即清空（看板、名册、闸门结论与工作包结构不受影响——工作包整棵树就在原生任务表里）。
+- **`team_intake` 的去重认「标题 + 说明」**，不认目标队友：把同一条说明派给两个不同队友时，第二个会被去重（`team_plan` 不受影响，它显式列出子项）。
 - 闸门的「已批准 / 已否决」结论**持久化在工单上**，插件重载不丢。
 - 所有队友**共享同一个工作目录**（DSH Agent Teams 的既有约束），本插件未引入 worktree 隔离。
 - 面板每 8 秒轮询一次整块看板，当前规模可接受，后续可改为订阅投影。

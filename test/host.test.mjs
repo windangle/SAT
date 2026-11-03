@@ -95,5 +95,59 @@ check('a plain task is not a gate', gateKindOf({ subject: '普通工单', writeS
 check('a legacy scope marker still identifies a gate',
   gateKindOf({ subject: 'x', writeScopes: ['super-agent-team/gate-merge'] }) === 'merge');
 
+/* ---------------------------------------------------------- packages --- */
+
+console.log('packages');
+const packageScope = {};
+const packageSource = extract('const PACKAGE_MARKER =', '/** Model-facing text for one gate. */');
+// eslint-disable-next-line no-new-func
+new Function('scope', `${packageSource}\nObject.assign(scope, { packageDescription, packageOf, dispatchKey, PACKAGE_POLICIES })`)(packageScope);
+const { packageDescription, packageOf, dispatchKey, PACKAGE_POLICIES } = packageScope;
+
+check('the policy set is exactly the three completion policies',
+  PACKAGE_POLICIES.size === 3 && PACKAGE_POLICIES.has('all') && PACKAGE_POLICIES.has('any') && PACKAGE_POLICIES.has('manual'),
+  [...PACKAGE_POLICIES].join(','));
+
+const described = packageDescription('', 'all', ['task-1', 'task-2']);
+check('a package description carries the policy', described.includes('completion=all'), described);
+check('a package description carries its children', described.includes('children=task-1,task-2'), described);
+check('a package description without context is only the marker',
+  described.trim().startsWith('@@sat-package') && described.trim().split('\n').length === 1, described);
+check('a package description keeps the shared context in front',
+  packageDescription('共享上下文', 'any', ['task-1']).startsWith('共享上下文'),
+  packageDescription('共享上下文', 'any', ['task-1']));
+
+const record = packageOf({ description: described });
+check('a package round-trips its policy', record?.policy === 'all', JSON.stringify(record));
+check('a package round-trips its children',
+  JSON.stringify(record?.children) === JSON.stringify(['task-1', 'task-2']),
+  JSON.stringify(record?.children));
+check('a package with context still round-trips',
+  packageOf({ description: packageDescription('共享上下文', 'manual', ['task-9']) })?.policy === 'manual',
+  packageDescription('共享上下文', 'manual', ['task-9']));
+check('a plain task is not a package', packageOf({ description: '普通工单' }) === undefined);
+check('a task without a description is not a package', packageOf({}) === undefined);
+check('a package with an unknown policy is not a package',
+  packageOf({ description: '@@sat-package completion=sometimes children=task-1' }) === undefined,
+  packageOf({ description: '@@sat-package completion=sometimes children=task-1' }));
+check('a package without children has no children',
+  JSON.stringify(packageOf({ description: '@@sat-package completion=all' })?.children) === '[]',
+  JSON.stringify(packageOf({ description: '@@sat-package completion=all' })));
+check('a package keeps only the ids it names',
+  JSON.stringify(packageOf({ description: '@@sat-package completion=all children=task-1,task-2' })?.children)
+    === JSON.stringify(['task-1', 'task-2']));
+
+console.log('dispatch identity');
+check('the same dispatch has the same identity',
+  dispatchKey('写实现', '', '写实现') === dispatchKey('写实现', '', '写实现'));
+check('a different brief is a different dispatch',
+  dispatchKey('写实现', '', '写实现') !== dispatchKey('写实现', '', '另一个 brief'));
+check('the second half of a decomposition is not swallowed',
+  dispatchKey('写实现', '', '写实现') !== dispatchKey('写测试', '', '写测试'));
+check('the dispatch identity ignores surrounding whitespace',
+  dispatchKey(' 写实现 ', '', ' 写实现 ') === dispatchKey('写实现', '', '写实现'));
+check('the dispatch identity tells two workers apart',
+  dispatchKey('评审', 'tester', '评审') !== dispatchKey('评审', 'reviewer', '评审'));
+
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
 process.exit(failures.length ? 1 : 0);

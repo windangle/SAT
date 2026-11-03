@@ -180,6 +180,51 @@ function isGateTask(task) {
   return gateKindOf(task) !== undefined
 }
 
+/**
+ * A Work Package: one request, split by the Team Lead into several Work
+ * Items.
+ *
+ * The package is a Work Item of its own, so it shows up on the shared board
+ * next to its children. The link to those children rides in its description
+ * as a compact marker, which keeps the whole structure inside the durable
+ * Team log: a plugin reload rebuilds the tree from the board alone, with no
+ * side storage to lose.
+ *
+ * The completion policy is the Lead's call per package, because the right
+ * rule depends on the work: `all` (every item must land), `any` (one
+ * acceptable path is enough), `manual` (the items are done, a human closes
+ * the package).
+ */
+const PACKAGE_MARKER = '@@sat-package'
+const PACKAGE_POLICIES = new Set(['all', 'any', 'manual'])
+
+/** Build the description of a package Work Item. */
+function packageDescription(text, policy, children) {
+  const marker = `${PACKAGE_MARKER} completion=${policy} children=${children.join(',')}`
+  return text ? `${text}\n\n${marker}` : marker
+}
+
+/** Read the package record out of a Work Item, or undefined when it is not one. */
+function packageOf(task) {
+  const description = String(task?.description ?? '')
+  const at = description.indexOf(PACKAGE_MARKER)
+  if (at < 0) return undefined
+  const line = description.slice(at)
+  const policy = /completion=([a-z]+)/.exec(line)?.[1]
+  if (!policy || !PACKAGE_POLICIES.has(policy)) return undefined
+  const children = (/children=([^\s]*)/.exec(line)?.[1] ?? '').split(',').filter(Boolean)
+  return { policy, children }
+}
+
+/**
+ * The identity of a dispatch. Two requests are the same work only when the
+ * title, the target and the brief all match — matching on the title alone
+ * would swallow the second half of a legitimate decomposition.
+ */
+function dispatchKey(subject, target, description) {
+  return `${String(subject ?? '').trim()}::${target ?? ''}::${String(description ?? '').trim()}`
+}
+
 /** Model-facing text for one gate. */
 function gateTitle(kind, subject) {
   return `${GATE_SUBJECT_PREFIX}${kind}] ${gateSubjectText(subject)}`
@@ -302,7 +347,7 @@ export function apply(ctx) {
    * `AbortSignal.any([...])`, which throws on a missing entry, so an
    * undefined signal would break every human-driven dispatch.
    */
-  async function intake(agent, request, signal = new AbortController().signal) {
+  async function intake(agent, request, signal = new AbortController().signal, options = {}) {
     const membership = requireMember(agent, 'team_intake')
     const teamId = membership.id
     const members = ctx.agentTeams.listMembers(agent)
@@ -325,12 +370,20 @@ export function apply(ctx) {
 
     const writeScopes = Array.isArray(request.writeScopes) ? request.writeScopes : []
 
-    // Idempotency: the same request must not create a second Work Item while
+    // Idempotency: the same work must not create a second Work Item while
     // the first one is still waiting for an owner. A Work Item that somebody
     // already picked up, or that is done, does not block a fresh request —
-    // re-running the same check after a fix is legitimate work.
-    const live = ctx.agentTeams.listTasks(agent).find((task) =>
-      task.status === 'pending' && !task.ownerName && task.subject === request.subject)
+    // re-running the same check after a fix is legitimate work. The identity
+    // is the title plus the brief, so a decomposition into different items is
+    // never swallowed. A package asks for its items explicitly and skips
+    // this check entirely.
+    const dedupe = options.dedupe !== false
+    const key = dispatchKey(request.subject, '', request.description)
+    const live = dedupe
+      ? ctx.agentTeams.listTasks(agent).find((task) =>
+        task.status === 'pending' && !task.ownerName
+        && dispatchKey(task.subject, '', task.description) === key)
+      : undefined
     if (live) {
       pushRoute(teamId, {
         subject: request.subject,
@@ -443,8 +496,96 @@ export function apply(ctx) {
     }
   }
 
-  // ---------------------------------------------------------------- Gates --
+  // ------------------------------------------------------------ Packages --
 
+  /**
+   * Plan one request as a Work Package: the Lead splits it into several Work
+   * Items, each routed to the worker that fits, and the package itself
+   * becomes a Work Item that ties them together on the board.
+   *
+   * The completion policy is the Lead's call, because the right rule depends
+   * on the work: `all` (every item must land), `any` (one acceptable path
+   * is enough), `manual` (the items are done, a human closes the package).
+   */
+  async function plan(agent, request, signal = new AbortController().signal) {
+    const membership = requireMember(agent, 'team_plan')
+    const teamId = membership.id
+    const policy = PACKAGE_POLICIES.has(request.completion) ? request.completion : 'all'
+    const items = Array.isArray(request.items) ? request.items.filter((item) => item && item.subject) : []
+    if (!items.length) throw new Error('team_plan needs at least one item with a subject.')
+
+    // The children first: the package Work Item carries their ids, so it can
+    // only be written once they exist.
+    const dispatched = []
+    for (const item of items) {
+      dispatched.push(await intake(agent, {
+        subject: item.subject,
+        description: item.description ?? '',
+        target: item.target,
+        writeScopes: item.writeScopes,
+      }, signal, { dedupe: false }))
+    }
+    const children = dispatched.map((entry) => entry.taskId).filter(Boolean)
+
+    const goal = String(request.goal ?? '工作包')
+    const packageTask = await ctx.agentTeams.createTask(agent, {
+      subject: goal,
+      description: packageDescription(request.description ?? '', policy, children),
+    })
+    pushRoute(teamId, {
+      subject: goal,
+      stage: 'package',
+      target: 'human',
+      reason: `work package of ${children.length} item(s), completion "${policy}"`,
+      taskId: packageTask.id,
+    })
+    return {
+      packageId: packageTask.id,
+      goal,
+      completion: policy,
+      children,
+      items: dispatched,
+    }
+  }
+
+  /**
+   * Settle one package Work Item. The Host only completes an in-progress
+   * task and ignores the subject and the description, so the package is
+   * claimed, then annotated, then completed.
+   */
+  async function settlePackage(agent, taskId, note) {
+    const view = ctx.agentTeams.getTask(agent, taskId)
+    if (!view) throw new Error(`No Work Item "${taskId}" on this board.`)
+    const record = packageOf(view)
+    if (!record) throw new Error(`Work Item "${taskId}" is not a work package.`)
+    if (view.status === 'completed') {
+      throw new Error(`Package ${taskId} was already settled (${view.subject}).`)
+    }
+    let revision = view.revision
+    if (view.status === 'pending') {
+      const claimed = await ctx.agentTeams.updateTask(agent, {
+        taskId,
+        expectedRevision: revision,
+        action: 'claim',
+      })
+      revision = claimed.revision
+    }
+    const stamp = new Date().toISOString()
+    const edited = await ctx.agentTeams.updateTask(agent, {
+      taskId,
+      expectedRevision: revision,
+      action: 'edit',
+      description: `${view.description}\n\nSettled ${stamp}.${note ? ` ${note}` : ''}`,
+    })
+    await ctx.agentTeams.updateTask(agent, {
+      taskId,
+      expectedRevision: edited.revision,
+      action: 'complete',
+    })
+    return { packageId: taskId, goal: view.subject, completion: record.policy }
+  }
+
+  // ---------------------------------------------------------------- Gates --
   /** Raise a human hard gate. The gate is a Work Item other work can block on. */
   async function requestGate(agent, request) {
     const membership = requireMember(agent, 'team_gate_request')
@@ -588,7 +729,8 @@ export function apply(ctx) {
           found.push({ kind: 'stalled', taskId: task.id, owner: task.ownerName, detail: `owner "${task.ownerName}" is ${owner.status}` })
         }
       }
-      if (task.status === 'pending' && task.ready && !task.ownerName && !isGateTask(task)) {
+      if (task.status === 'pending' && task.ready && !task.ownerName
+        && !isGateTask(task) && packageOf(task) === undefined) {
         found.push({ kind: 'unclaimed', taskId: task.id, detail: task.subject })
       }
     }
@@ -614,11 +756,62 @@ export function apply(ctx) {
 
   const OUTPUT_OBJECT = { type: 'object', additionalProperties: true }
 
+  /**
+   * Derive the package tree from the board. The package record lives in the
+   * Work Item's own description, so this needs no side storage: the tree is
+   * always exactly what the durable board says.
+   */
+  function derivePackages(tasks) {
+    const byId = new Map(tasks.map((task) => [task.id, task]))
+    const packages = []
+    for (const task of tasks) {
+      const record = packageOf(task)
+      if (!record) continue
+      const children = record.children.map((id) => byId.get(id)).filter(Boolean)
+      const done = children.filter((child) => child.status === 'completed').length
+      let status = 'open'
+      if (task.status === 'completed') status = 'completed'
+      else if (record.policy === 'manual') status = done === children.length && children.length ? 'awaiting-human' : 'open'
+      else if (record.policy === 'any' && done > 0) status = 'settled-by-policy'
+      else if (record.policy === 'all' && children.length && done === children.length) status = 'settled-by-policy'
+      packages.push({
+        id: task.id,
+        goal: task.subject,
+        completion: record.policy,
+        children: record.children,
+        done,
+        total: children.length,
+        status,
+        revision: task.revision,
+      })
+    }
+    return packages
+  }
+
+  /**
+   * Settle the packages whose policy is already satisfied. The `manual`
+   * policy is never settled here: a human closes those.
+   */
+  async function settleReadyPackages(agent) {
+    const tasks = ctx.agentTeams.listTasks(agent)
+    const ready = derivePackages(tasks).filter((entry) => entry.status === 'settled-by-policy')
+    for (const entry of ready) {
+      try {
+        await settlePackage(agent, entry.id, `all ${entry.done}/${entry.total} item(s) landed`)
+      } catch {
+        /* a package that cannot settle now is retried on the next scan */
+      }
+    }
+  }
+
   /** The whole board state of one Team, for the model and for the panel. */
-  function snapshot(agent) {
+  async function snapshot(agent) {
     const membership = requireMember(agent, 'team_status')
     const teamId = membership.id
     const members = ctx.agentTeams.listMembers(agent)
+    // A package whose policy is satisfied is settled before the board is
+    // read, so the panel never shows a finished package as still open.
+    await settleReadyPackages(agent)
     const tasks = ctx.agentTeams.listTasks(agent)
     const board = ledger(teamId)
 
@@ -665,8 +858,16 @@ export function apply(ctx) {
         writeScopes: task.writeScopes,
         writeScopeWarnings: task.writeScopeWarnings ?? [],
         gate: gateKindOf(task) ?? null,
+        isPackage: packageOf(task) !== undefined,
+        package: (() => {
+          for (const entry of derivePackages(tasks)) {
+            if (entry.children.includes(task.id)) return entry.id
+          }
+          return null
+        })(),
       })),
       gates,
+      packages: derivePackages(tasks),
       routes: board.routes,
       alerts: board.alerts,
       availableCommands: commandCatalog(agent),
@@ -730,12 +931,48 @@ export function apply(ctx) {
       }))
 
       register(scoped.tools.register({
+        name: 'team_plan',
+        description: 'Split one request into a Work Package: several Work Items, each routed to the worker that fits, tied together by a package Work Item on the board. Choose the completion policy per package: all (every item must land), any (one acceptable path is enough), or manual (the items are done and a human closes the package).',
+        parameters: {
+          type: 'object',
+          properties: {
+            goal: { type: 'string', description: 'What the whole package is trying to achieve.' },
+            completion: {
+              type: 'string',
+              enum: ['all', 'any', 'manual'],
+              description: 'When the package counts as done. Choose per package: all, any or manual.',
+            },
+            description: { type: 'string', description: 'Context every item shares.' },
+            items: {
+              type: 'array',
+              description: 'The items the request splits into.',
+              items: {
+                type: 'object',
+                properties: {
+                  subject: { type: 'string', description: 'Concise item title.' },
+                  description: { type: 'string', description: 'What this item must deliver.' },
+                  target: { type: 'string', description: 'Optional teammate name that bypasses the rule filter.' },
+                },
+                required: ['subject'],
+              },
+            },
+          },
+          required: ['goal', 'items'],
+          additionalProperties: false,
+        },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        async execute(args, exec) {
+          return await plan(exec.agent, args, exec.signal)
+        },
+      }))
+
+      register(scoped.tools.register({
         name: 'team_status',
         description: 'Read the SuperAgentTeam board: roster with live status, Work Items with owners and blockers, pending human gates, the recent routing ledger and watchdog alerts.',
         parameters: { type: 'object', properties: {}, additionalProperties: false },
         output: { schema: OUTPUT_OBJECT, render: renderJson },
-        execute(_args, exec) {
-          return Promise.resolve(snapshot(exec.agent))
+        async execute(_args, exec) {
+          return await snapshot(exec.agent)
         },
       }))
 
@@ -809,8 +1046,15 @@ export function apply(ctx) {
     if (!taskId) return undefined
     let view
     try { view = ctx.agentTeams.getTask(agent, taskId) } catch { return undefined }
-    if (!view || !isGateTask(view)) return undefined
-    return `Work Item ${taskId} is a human hard gate. The model cannot approve or reject a gate; ask the human through the SuperAgentTeam control surface.`
+    if (!view) return undefined
+    if (isGateTask(view)) {
+      return `Work Item ${taskId} is a human hard gate. The model cannot approve or reject a gate; ask the human through the SuperAgentTeam control surface.`
+    }
+    const record = packageOf(view)
+    if (record && record.policy === 'manual') {
+      return `Work Item ${taskId} is a work package a human has to close. The model cannot settle it; ask the human through the SuperAgentTeam control surface.`
+    }
+    return undefined
   }), 'super-agent-team.gateGuard()')
 
   // ------------------------------------------------------------ Command ---
@@ -826,7 +1070,7 @@ export function apply(ctx) {
     commandCtx.commands.register({
     name: 'super-team',
     description: 'SuperAgentTeam control surface: inspect the board, submit work to the Router, or settle a human hard gate.',
-    input: { hint: '<state | intake <request> | approve <taskId> | reject <taskId> | delete <taskId> | clean-scopes>' },
+    input: { hint: '<state | intake <request> | plan <goal> | <item> | ... | approve <taskId> | reject <taskId> | complete <packageId> | delete <taskId> | clean-scopes>' },
     handler: async ({ agent, rawInput, signal }) => {
       const line = String(rawInput ?? '').trim()
       const [verb = '', ...rest] = line.split(/\s+/)
@@ -835,7 +1079,7 @@ export function apply(ctx) {
         switch (verb) {
           case '':
           case 'state': {
-            const state = snapshot(agent)
+            const state = await snapshot(agent)
             return { kind: 'success', text: JSON.stringify(state) }
           }
           case 'intake': {
@@ -853,6 +1097,31 @@ export function apply(ctx) {
             if (!argument) return { kind: 'error', text: `${verb} needs a Work Item id.` }
             const result = await decideGate(agent, argument, verb === 'approve' ? 'approve' : 'reject')
             return { kind: 'success', text: `Gate ${result.gateId} (${result.kind}) ${result.status}.` }
+          }
+          case 'plan': {
+            if (!argument) return { kind: 'error', text: 'plan needs a goal.' }
+            // <policy>: <goal> | <item> | <item> ...
+            const parts = argument.split('|').map((part) => part.trim()).filter(Boolean)
+            let policy = 'all'
+            let goal = parts.shift() ?? argument
+            const declared = /^(all|any|manual):\s*(.*)$/.exec(goal)
+            if (declared) {
+              policy = declared[1]
+              goal = declared[2] || goal
+            }
+            const items = parts.length
+              ? parts.map((subject) => ({ subject, description: subject }))
+              : [{ subject: goal, description: goal }]
+            const result = await plan(agent, { goal, completion: policy, items }, signal)
+            return {
+              kind: 'success',
+              text: `Package ${result.packageId} (${result.goal}) with ${result.children.length} item(s), completion "${result.completion}".`,
+            }
+          }
+          case 'complete': {
+            if (!argument) return { kind: 'error', text: 'complete needs a Work Package id.' }
+            const result = await settlePackage(agent, argument, 'Settled by the human.')
+            return { kind: 'success', text: `Package ${result.packageId} (${result.goal}) settled.` }
           }
           case 'delete': {
             if (!argument) return { kind: 'error', text: 'delete needs a Work Item id.' }
@@ -882,7 +1151,7 @@ export function apply(ctx) {
             }
           }
           default:
-            return { kind: 'error', text: `Unknown subcommand "${verb}". Use state, intake, approve, reject, delete or clean-scopes.` }
+            return { kind: 'error', text: `Unknown subcommand "${verb}". Use state, intake, approve, reject, complete, delete or clean-scopes.` }
         }
       } catch (error) {
         return { kind: 'error', text: error instanceof Error ? error.message : String(error) }

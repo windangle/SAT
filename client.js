@@ -19,6 +19,13 @@ window.__ModuleLoader__.load({
         subtitle: 'Router · Work Items · Hard gates · Watchdog',
         members: 'Roster',
         gates: 'Hard gates',
+        packages: 'Work packages',
+        completionAll: 'All items',
+        completionAny: 'Any one item',
+        completionManual: 'A human closes it',
+        progress: '{done} of {total} done',
+        closePackage: 'Close it',
+        awaitingHuman: 'waiting for a human',
         workItems: 'Work board',
         ledger: 'Router ledger',
         alerts: 'Watchdog alerts',
@@ -52,6 +59,13 @@ window.__ModuleLoader__.load({
         subtitle: '调度 · 工单 · 硬闸 · 看门狗',
         members: '成员名册',
         gates: '人工硬闸',
+        packages: '工作包',
+        completionAll: '全票通过',
+        completionAny: '任一完成',
+        completionManual: '人工确认',
+        progress: '{done}/{total} 已完成',
+        closePackage: '人工确认并关闭',
+        awaitingHuman: '等待人工确认',
         workItems: '工作看板',
         ledger: '调度流水',
         alerts: '看门狗告警',
@@ -114,6 +128,24 @@ window.__ModuleLoader__.load({
       .sat-member-desc { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px;
         overflow-wrap: anywhere; }
       .sat-member-status { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-package { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+      .sat-package-head { display: flex; align-items: center; gap: 10px; }
+      .sat-package-goal { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      .sat-package-policy { font-size: 10px; color: var(--dsw-alias-label-secondary);
+        background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+      .sat-package-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px;
+        font-size: 11px; color: var(--dsw-alias-label-secondary); }
+      .sat-package-items { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+      .sat-package-item { display: flex; align-items: center; gap: 8px; font-size: 12px;
+        padding: 5px 9px; border-radius: 7px; background: var(--dsw-alias-bg-layer-2);
+        border: 1px solid var(--dsw-alias-border-l1); }
+      .sat-package-item[data-status="completed"] { color: var(--dsw-alias-label-secondary); }
+      .sat-package-item-dot { width: 7px; height: 7px; border-radius: 50%; flex: none;
+        background: var(--dsw-alias-state-idle-primary); }
+      .sat-package-item-dot[data-status="in_progress"] { background: var(--dsw-alias-brand-primary); }
+      .sat-package-item-dot[data-status="completed"] { background: var(--dsw-alias-state-success-primary); }
       .sat-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
       .sat-col { min-width: 0; background: var(--dsw-alias-bg-layer-1);
         border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 10px;
@@ -218,6 +250,39 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'sat-item' },
         h('div', { className: 'sat-item-title' }, task.displaySubject || task.subject),
         meta.length ? h('div', { className: 'sat-item-meta' }, meta) : null);
+    }
+
+    const POLICY_LABEL = { all: 'completionAll', any: 'completionAny', manual: 'completionManual' };
+
+    /** One Work Package: the goal, its policy, and the items it was split into. */
+    function PackageCard({ pkg, tasks, t, busy, onClose }) {
+      const children = (pkg.children || [])
+        .map((id) => tasks.find((task) => task.id === id))
+        .filter(Boolean);
+      const awaiting = pkg.status === 'awaiting-human';
+      return h('div', { className: 'sat-package' },
+        h('div', { className: 'sat-package-head' },
+          h('span', { className: 'sat-package-goal' }, pkg.goal),
+          h('span', { className: 'sat-package-policy' }, t(POLICY_LABEL[pkg.completion] || 'completionAll')),
+          pkg.status === 'completed'
+            ? h('span', { className: 'sat-chip', 'data-tone': 'success' }, t('completed'))
+            : null),
+        h('div', { className: 'sat-package-meta' },
+          h('span', null, t('progress', { done: pkg.done, total: pkg.total })),
+          awaiting ? h('span', { className: 'sat-chip', 'data-tone': 'warn' }, t('awaitingHuman')) : null),
+        children.length
+          ? h('div', { className: 'sat-package-items' }, children.map((child) => h('div', {
+              className: 'sat-package-item', key: child.id, 'data-status': child.status,
+            },
+            h('span', { className: 'sat-package-item-dot', 'data-status': child.status }),
+            h('span', { style: { flex: '1', minWidth: '0', overflowWrap: 'anywhere' } }, child.displaySubject || child.subject),
+            h('span', { className: 'sat-chip' }, child.owner || t('none')))))
+          : null,
+        awaiting
+          ? h('div', { style: { marginTop: '10px' } },
+              h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: busy,
+                onClick: () => onClose(pkg.id) }, t('closePackage')))
+          : null);
     }
 
     function Board({ tasks, t }) {
@@ -327,6 +392,13 @@ window.__ModuleLoader__.load({
         await reload();
       }, [run, reload]);
 
+      const closePackage = React.useCallback(async (packageId) => {
+        setBusy(true);
+        await run('/super-team complete ' + packageId);
+        setBusy(false);
+        await reload();
+      }, [run, reload]);
+
       const dispatch = React.useCallback(async (text) => {
         setBusy(true);
         await run('/super-team intake ' + text);
@@ -334,7 +406,7 @@ window.__ModuleLoader__.load({
         await reload();
       }, [run, reload]);
 
-      return { state, error, busy, syncedAt, reload, decide, dispatch, connected: Boolean(commands) };
+      return { state, error, busy, syncedAt, reload, decide, dispatch, closePackage, connected: Boolean(commands) };
     }
 
     /**
@@ -396,6 +468,12 @@ window.__ModuleLoader__.load({
       const members = mapMembers(remoteState, team);
       const tasks = mapTasks(remoteState, team);
       const gates = remoteState && remoteState.gates ? remoteState.gates : [];
+      const packages = remoteState && remoteState.packages ? remoteState.packages : [];
+
+      // A package and its items are shown in the package section, so the
+      // board below carries only the work that stands on its own.
+      const packaged = new Set(packages.flatMap((pkg) => pkg.children || []));
+      const standalone = tasks.filter((task) => !task.isPackage && !packaged.has(task.id));
       const routes = remoteState && remoteState.routes ? remoteState.routes : [];
       const alerts = remoteState && remoteState.alerts ? remoteState.alerts : [];
 
@@ -450,10 +528,19 @@ window.__ModuleLoader__.load({
                   gates.map((gate) => h(GateRow, { key: gate.id, gate, busy: host.busy, onDecide: host.decide, t }))))
             : null,
 
+          packages.length
+            ? h('section', { className: 'sat-section' },
+                h('div', { className: 'sat-section-head' },
+                  t('packages'),
+                  h('span', { className: 'sat-count' }, String(packages.length))),
+                packages.map((pkg) => h(PackageCard, { key: pkg.id, pkg, tasks, t,
+                  busy: host.busy, onClose: host.closePackage })))
+            : null,
+
           h('section', { className: 'sat-section' },
             h('div', { className: 'sat-section-head' }, t('workItems')),
-            tasks.length
-              ? h(Board, { tasks, t })
+            standalone.length
+              ? h(Board, { tasks: standalone, t })
               : h('div', { className: 'sat-empty' }, t('empty'))),
 
           alerts.length
