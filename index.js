@@ -1259,7 +1259,9 @@ export function apply(ctx, config = {}) {
   /** A path-safe, unique key for one ledger record. */
   function ledgerKey(record) {
     ledgerSequence += 1
-    return `${record.time}-${ledgerSequence}`
+    // Routing decisions carry `time`, completions carry `at`.
+    const stamp = record.time ?? record.at ?? Date.now()
+    return `${stamp}-${ledgerSequence}`
   }
 
   /** Write one completion down, best effort. */

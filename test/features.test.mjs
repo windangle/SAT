@@ -235,6 +235,9 @@ console.log('the completion tracker');
   await world.agentTeams.updateTask(world.agent, { taskId: task.id, expectedRevision: 2, action: 'complete' });
   const state = JSON.parse((await world.ctx.__handler({ agent: world.agent, rawInput: 'state', signal: new AbortController().signal })).text);
   check('a completion is noticed', state.completions.length === 1, JSON.stringify(state.completions));
+  const completionKeys = Object.keys(world.records.completions);
+  check('a completion key has a real timestamp',
+    completionKeys.every((key) => /^[0-9]+-[0-9]+$/.test(key)), JSON.stringify(completionKeys));
   check('the completion names the Work Item', state.completions[0]?.taskId === task.id);
   check('the completion names the subject', state.completions[0]?.subject === '写单元测试');
   const again = JSON.parse((await world.ctx.__handler({ agent: world.agent, rawInput: 'state', signal: new AbortController().signal })).text);

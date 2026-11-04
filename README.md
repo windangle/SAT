@@ -262,7 +262,7 @@ node test/render-ui.test.mjs   # 「最近完成」区块与条件轮询（含�
 node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇总 / 审批 / 团队模板
 ```
 
-共 **188 项断言**，全部通过。
+共 **191 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
