@@ -139,6 +139,8 @@ team_plan({
 
 ### 7. Agent 公司层（组织治理）
 
+> 侧栏入口叫 **「Agent公司」**（在工作区列表上方），不是「公司」。
+
 上面 1~6 是**执行层**（一个会话里的团队）。公司层是压在上面的**组织层**——管的是「一家公司」而不是「一堆活」：
 
 - **董事长（人）** 只对接 **CEA 首席执行 Agent**（唯一 Router）。CEA 理解并确认需求、设计岗位 JD、按任务派到岗位、对最终产出审核负责，再交付董事长验收。
@@ -150,9 +152,19 @@ team_plan({
 **公司总览**（侧栏「公司」入口，在工作区列表上方）：CEA 派任务框、董事长待办（需求确认 / 批准 JD / 验收成果）、组织架构（岗位 + Leader + 能力档案）、PM 与项目组合、公司动态。
 **项目视图**（每个会话的「项目视图」页）：按当前 `workspaceId` / 工作区标题过滤，只看这个项目的目标、工单、CEA 终审、董事长验收状态。
 
+**CEA 岗位说明书**：`CEA_ROLE` 是唯一真相——既写进组织状态（面板里的「CEA · 岗位说明书」区块），又由 `ceaPersona()` 生成注入模型的 persona，两处不会漂移。含身份、使命、**9 条能力**（需求澄清、项目/任务定位、拆解编排、组织设计、按能力派工、风险跟踪、终审、向上沟通、组织记忆）、**6 条硬要求**、**6 条工作习惯**、代拍板权白名单、5 条不可为、验收标准。核心定位：**公司的经营者，不是执行者**；董事长唯一对接的 Router。
+
+**预设组织架构**（调研精简但运作完善的中小型互联网公司后落地，`PRESET_ORG`）：**5 部门 / 14 岗位 / 3 PM**。
+产品与设计 · 研发 · 质量与运维 · 数据与增长运营 · 综合管理。每个岗位有完整 JD（使命/职责/技能/边界/验收）与岗位 Leader 能力档案；3 个岗位标 `planned`（**待招虚框**，不冒充在编）。3 位 PM 各管一类项目（工具类/插件类、内容与研究类、运营与增长类），各带该类项目的业务知识与经验。依据：**先列事再列岗**、约 30 人分 3~4 组、必须有一人专职行政财务、层级 ≤ 3、直接下属 ≤ 8、待招用虚线框。
+
+**项目 / 任务定位（一个工作区 = 一个项目，一个会话 = 一个任务）**：CEA 立案时先枚举**真实工作区与会话**，用标题归一化判断「新建 vs 走存量」，把定位写进需求确认决策给你拍板；**确认后才落地**。董事长可改选路由，批准时存量直接绑 id、新建会话尝试真建、全新工作区不在你背后建目录（记 `provisioning`，等你在 GUI 建好后 `bind` 真实 id）。
+
 ```
 /company state                              # 整家公司的状态（JSON）
-/company brief <任务>                        # CEA 立案：复述理解，等你确认才派工
+/company brief <任务> | [项目] | [任务标题]   # CEA 立案：复述理解 + 项目/任务定位，等你确认才派工
+/company route <决策> | <工作区|新:名称> | <会话|新:标题>   # 董事长改选项目/任务
+/company bind <项目> | <workspaceId> | <sessionId>          # 董事长绑定真实工作区/会话 id
+/company inventory                         # 列出真实工作区与会话
 /company position <岗位> | <JD>              # CEA 起草 JD，等你批准才新增岗位
 /company dispatch <项目> | <岗位> | <活>      # 派到岗位（不是个人）
 /company deliver <项目> | <成果> | [自审]     # CEA 终审后提交你验收
@@ -161,7 +173,7 @@ team_plan({
 /company reset                              # 重置为演示组织架构
 ```
 
-给模型的 CEA 侧工具：`company_status` / `company_brief` / `company_position_design` / `company_dispatch` / `company_deliver`（**没有** approve / reject）。
+给模型的 CEA 侧工具：`company_status` / `company_brief`（可带 `project` / `task_title` 提示）/ `company_position_design` / `company_dispatch` / `company_deliver`（**没有** approve / reject / route / bind——这些是人的）。
 
 > 当前是**纵切 Demo**：组织结构、决策闭环、两级视图、落盘都已跑通并真机验过。Leader 真的自动 spawn 临时员工、PM 自动写知识、跨工作区联邦执行（模型 B）是下一步 —— 落点与契约见 [AgentCompany-方案.md](../AgentCompany-方案.md)。
 
@@ -291,14 +303,14 @@ node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇�
 node test/company.test.mjs      # Agent 公司层：组织、JD 审批、派工、交付验收、重载恢复
 ```
 
-共 **226 项断言**，全部通过。
+共 **247 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
 - **`host.test.mjs`** 覆盖纯函数：技能词的词边界匹配、队友点名的整词规则、工作包标记的格式与往返、`dispatchKey` 的身份语义。
 - **`features.test.mjs`** 覆盖这一轮新增的能力：Config schema 的校验与默认值、流水落盘与读回、失败 / 闲置 owner 的回收、完成记录的去重、审批通道与团队模板。它的假存储后端**复刻了真实约束**（一个 unit 只能有一个 live handle、key 必须 path-safe），所以能抓住「写不下去却静默成功」这类问题。
 - **`render-ui.test.mjs`** 用可控假时钟验证轮询节奏：打开立刻拉、安静时 8 秒、退避到 30 秒、有待批闸门时保持 8 秒、看板一变立刻察觉。
-- **`company.test.mjs`** 用假 Host（复刻 KV 的 one-live-handle 约束 + 命令/工具注册表）跑真实插件代码：组织种子、CEA 工具存在而董事长拍板工具**不存在**、立案→确认→执行、JD 批准后才建岗、派到岗位、驳回不算完成、董事长验收才算完成、重载后组织状态还在。
+- **`company.test.mjs`** 用假 Host（复刻 KV 的 one-live-handle 约束 + 命令/工具注册表 + 真实工作区/会话服务）跑真实插件代码：组织架构与部门归组、CEA 角色结构、待招标记、CEA 工具存在而董事长拍板工具**不存在**、立案→确认→执行、项目/任务定位与董事长改选路由、批准后才落地、新建工作区不擅自建目录、bind 绑定、JD 批准后才建岗（待招就地转正不重复）、派到岗位、驳回不算完成、董事长验收才算完成、重载后组织状态还在。
 
 ---
 

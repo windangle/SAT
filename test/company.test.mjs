@@ -89,8 +89,19 @@ function makeWorld() {
     get(name) {
       if (name === 'storage') return storage;
       if (name === 'workspaceRegistry') {
-        return { list: () => [{ id: 'ws-1', title: 'DSH插件', sessionIds: ['agent-lead'] }] };
+        return { list: () => [{ id: 'ws-1', title: 'DSH插件', path: '/ws/dsh', sessionIds: ['agent-lead', 'session-a', 'session-b'] }] };
       }
+      if (name === 'sessions') {
+        const all = {
+          'session-a': { id: 'session-a', title: 'SuperAgentTeam插件方案与演示' },
+          'session-b': { id: 'session-b', title: '个人工作台插件' },
+        };
+        return { list: () => Object.values(all), get: (id) => all[id] };
+      }
+      if (name === 'sessionTitle') {
+        return { get: (session) => ({ title: session.title }), rename: () => ({}) };
+      }
+      if (name === 'sessionController') return undefined;
       if (name === 'approval') return undefined;
       if (name === 'fs') return { resolve: async () => ({}), readText: async () => '' };
       if (name === 'workingDirectory') return { get: () => '/workspace', defaultDirectory: '/workspace' };
@@ -128,8 +139,19 @@ check('the Config schema is still a standard schema', Boolean(Config?.['~standar
   check('the /company command is registered', typeof world.commands.company?.handler === 'function');
   const org = await state(world);
   check('the org has a chairman and a CEA', Boolean(org.company?.chairman && org.company?.cea?.name === 'CEA'));
-  check('the org has active positions with JDs', org.positions.length >= 3 && org.positions.every((p) => p.jd?.mission !== undefined));
+  check('the org has active positions with JDs', org.positions.length >= 10 && org.positions.every((p) => p.jd?.mission !== undefined));
+  check('the org has departments grouping positions', org.departments.length >= 4 && org.departments.every((d) => d.positionIds.length > 0));
+  check('every position belongs to a department', org.positions.every((p) => org.departments.some((d) => d.positionIds.includes(p.id))));
+  check('planned positions are marked 待招', org.positions.some((p) => p.status === 'planned'));
+  check('there are 3 PMs each owning a project class', org.pms.length === 3 && org.pms.every((pm) => pm.class && pm.knowledge.length >= 1));
   check('each position Leader owns a capability ledger', org.positions.every((p) => Array.isArray(p.leader?.capabilities)));
+  const cea = org.company.cea;
+  check('CEA has a structured identity', Boolean(cea.identity && cea.mission && cea.reportsTo));
+  check('CEA has capabilities, requirements and habits',
+    cea.capabilities.length >= 6 && cea.requirements.length >= 5 && cea.habits.length >= 5);
+  check('CEA has an authority boundary and forbidden list',
+    cea.delegatedAuthority.length >= 1 && cea.forbidden.length >= 3 && Boolean(cea.acceptance));
+  check('the company is named Agent公司', org.company.name === 'Agent公司');
   check('PMs own business knowledge', org.pms.length >= 1 && org.pms.every((pm) => Array.isArray(pm.knowledge)));
   check('the state carries the current workspace', org._current?.workspaceTitle === 'DSH插件', JSON.stringify(org._current));
 }
@@ -191,10 +213,10 @@ console.log('CEA dispatches to a position, not a person');
   const world = makeWorld();
   apply(world.ctx, Config['~standard'].validate({}).value);
   const before = await state(world);
-  await run(world, 'dispatch proj-dsh-plugins | pos-eng | 实现公司总览面板');
+  await run(world, 'dispatch proj-dsh-plugins | pos-plugin-dev | 实现公司总览面板');
   const after = await state(world);
-  const position = after.positions.find((p) => p.id === 'pos-eng');
-  check('the position load increases', position.load === before.positions.find((p) => p.id === 'pos-eng').load + 1);
+  const position = after.positions.find((p) => p.id === 'pos-plugin-dev');
+  check('the position load increases', position.load === before.positions.find((p) => p.id === 'pos-plugin-dev').load + 1);
   check('the work item is recorded on the project',
     after.projects.find((p) => p.id === 'proj-dsh-plugins').workItems.includes('实现公司总览面板'));
   check('a low-load position has its Leader work directly',
@@ -240,6 +262,59 @@ console.log('the company survives a plugin reload (profile-wide state)');
   const restored = await state(second);
   check('a fresh plugin instance reads the same org', restored.projects.length === first.projects.length);
   check('the pending decisions are restored', restored.decisions.length === first.decisions.length);
+}
+
+console.log('CEA confirms the project (=workspace) and task (=session) before dispatch');
+{
+  const world = makeWorld();
+  apply(world.ctx, Config['~standard'].validate({}).value);
+  const seeded = await state(world);
+  check('the state enumerates real workspaces', seeded.inventory.workspaces[0]?.title === 'DSH插件');
+  check('the state enumerates real sessions with titles',
+    seeded.inventory.byWorkspace['ws-1'].some((x) => x.title === 'SuperAgentTeam插件方案与演示'),
+    JSON.stringify(seeded.inventory.byWorkspace));
+
+  // A task that names an existing workspace → route into the existing project
+  await run(world, 'brief 在 DSH插件 里补一份部门岗位预设说明');
+  const proposed = await state(world);
+  const decision = proposed.decisions.find((d) => d.kind === 'requirement' && d.status === 'pending');
+  check('a requirement decision carries a routing proposal', Boolean(decision.routing));
+  check('the CEA proposes the existing workspace for a matching task',
+    decision.routing.project.mode === 'existing' && decision.routing.project.workspaceId === 'ws-1',
+    JSON.stringify(decision.routing.project));
+  check('the decision text shows the project/task positioning',
+    decision.detail.includes('项目 / 任务定位') && decision.detail.includes('一个工作区对应一个项目'));
+
+  // The chairman overrides the routing before approving
+  await run(world, 'route ' + decision.id + ' | 新:移动审批 | 新:移动端审批卡片');
+  const rerouted = await state(world);
+  const changed = rerouted.decisions.find((d) => d.id === decision.id);
+  check('the chairman can change the project to a new workspace',
+    changed.routing.project.mode === 'new' && changed.routing.project.title === '移动审批',
+    JSON.stringify(changed.routing.project));
+  check('the chairman can change the task to a new session',
+    changed.routing.task.mode === 'new' && changed.routing.task.title === '移动端审批卡片');
+  check('a route change is written to the audit log',
+    rerouted.events.some((e) => e.kind === 'route'));
+
+  // Approving materializes the routing
+  await run(world, 'approve ' + decision.id);
+  const approved = await state(world);
+  const project = approved.projects.find((p) => p.id === decision.projectId);
+  check('approval records the routing on the project', Boolean(project.routing));
+  check('a new workspace is not created behind the chairman\'s back',
+    Boolean(project.provisioning && project.provisioning.workspace === '移动审批'),
+    JSON.stringify(project.provisioning));
+  check('one workspace = one project, one session = one task is stated',
+    approved.decisions.find((d) => d.id === decision.id).detail.includes('一个会话对应一个任务'));
+
+  // The chairman creates them in the GUI, then binds the real ids
+  await run(world, 'bind ' + project.id + ' | ws-99 | session-99');
+  const bound = await state(world);
+  const boundProject = bound.projects.find((p) => p.id === project.id);
+  check('the chairman can bind real workspace/session ids',
+    boundProject.workspaceId === 'ws-99' && boundProject.sessionId === 'session-99');
+  check('binding clears the pending provisioning', !boundProject.provisioning);
 }
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');

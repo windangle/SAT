@@ -28,8 +28,8 @@ window.__ModuleLoader__.load({
         awaitingHuman: 'waiting for a human',
         workItems: 'Work board',
         ledger: 'Router ledger',
-        company: 'Company',
-        companyTitle: 'SuperAgent Company',
+        company: 'Agent Company',
+        companyTitle: 'Agent Company',
         chairmanDesk: "Chairman's desk",
         ceaLabel: 'CEA · Chief Executive Agent',
         ceaNote: 'The Chairman talks only to the CEA. The CEA confirms requirements, designs positions, dispatches to positions, reviews the final output, and submits it for the Chairman\'s acceptance. Final delivery is complete only after the Chairman approves it.',
@@ -65,6 +65,25 @@ window.__ModuleLoader__.load({
         briefHint: 'The CEA restates its understanding and waits for your confirmation before dispatching.',
         noCompanyChannel: 'Open any conversation to load the company state.',
         refresh: 'Refresh',
+        ceaRole: 'CEA · Role card',
+        identity: 'Identity',
+        mission: 'Mission',
+        capabilities: 'Capabilities',
+        requirements: 'Requirements',
+        habits: 'Work habits',
+        authority: 'Delegated authority',
+        forbidden: 'Never do',
+        acceptance: 'Acceptance',
+        departments: 'Departments',
+        planned: 'planned / to hire',
+        routing: 'Project / task routing',
+        routingProject: 'Project = workspace',
+        routingTask: 'Task = session',
+        existingTarget: 'existing',
+        newTarget: 'new',
+        routeHint: 'Change routing: /company route <decision> | <workspace or 新:name> | <session or 新:title>',
+        inventory: 'Workspace / session inventory',
+        provision: 'Pending provisioning',
         completions: 'Recently completed',
         alerts: 'Watchdog alerts',
         intakeTitle: 'Dispatch work',
@@ -89,6 +108,25 @@ window.__ModuleLoader__.load({
         routingTo: '→ {target}',
         escalated: 'escalated to the Lead',
         refresh: 'Refresh',
+        ceaRole: 'CEA · Role card',
+        identity: 'Identity',
+        mission: 'Mission',
+        capabilities: 'Capabilities',
+        requirements: 'Requirements',
+        habits: 'Work habits',
+        authority: 'Delegated authority',
+        forbidden: 'Never do',
+        acceptance: 'Acceptance',
+        departments: 'Departments',
+        planned: 'planned / to hire',
+        routing: 'Project / task routing',
+        routingProject: 'Project = workspace',
+        routingTask: 'Task = session',
+        existingTarget: 'existing',
+        newTarget: 'new',
+        routeHint: 'Change routing: /company route <decision> | <workspace or 新:name> | <session or 新:title>',
+        inventory: 'Workspace / session inventory',
+        provision: 'Pending provisioning',
         lastSync: 'Synced {time}',
       },
       zh: {
@@ -106,8 +144,8 @@ window.__ModuleLoader__.load({
         awaitingHuman: '等待人工确认',
         workItems: '工作看板',
         ledger: '调度流水',
-        company: '公司',
-        companyTitle: 'SuperAgent 公司',
+        company: 'Agent公司',
+        companyTitle: 'Agent公司',
         chairmanDesk: '董事长待办',
         ceaLabel: 'CEA · 首席执行 Agent',
         ceaNote: '董事长只与 CEA 对接。CEA 理解并确认需求、设计岗位、按任务派到岗位、对最终产出审核负责，再交付董事长验收；成果必须董事长审核通过才算完成。',
@@ -143,6 +181,25 @@ window.__ModuleLoader__.load({
         briefHint: 'CEA 会先复述理解并等你确认，确认后才派工。',
         noCompanyChannel: '打开任意会话后即可看到公司状态。',
         refresh: '刷新',
+        ceaRole: 'CEA · 岗位说明书',
+        identity: '身份',
+        mission: '使命',
+        capabilities: '能力',
+        requirements: '要求',
+        habits: '工作习惯',
+        authority: '代拍板权',
+        forbidden: '不可为',
+        acceptance: '验收标准',
+        departments: '部门',
+        planned: '待招（虚框）',
+        routing: '项目 / 任务定位',
+        routingProject: '项目 = 工作区',
+        routingTask: '任务 = 会话',
+        existingTarget: '存量',
+        newTarget: '新建',
+        routeHint: '改选：/company route <决策> | <工作区或 新:名称> | <会话或 新:标题>',
+        inventory: '工作区 / 会话台账',
+        provision: '待补建',
         completions: '最近完成',
         alerts: '看门狗告警',
         intakeTitle: '派活',
@@ -167,6 +224,25 @@ window.__ModuleLoader__.load({
         routingTo: '→ {target}',
         escalated: '已升级给 Lead 判定',
         refresh: '刷新',
+        ceaRole: 'CEA · 岗位说明书',
+        identity: '身份',
+        mission: '使命',
+        capabilities: '能力',
+        requirements: '要求',
+        habits: '工作习惯',
+        authority: '代拍板权',
+        forbidden: '不可为',
+        acceptance: '验收标准',
+        departments: '部门',
+        planned: '待招（虚框）',
+        routing: '项目 / 任务定位',
+        routingProject: '项目 = 工作区',
+        routingTask: '任务 = 会话',
+        existingTarget: '存量',
+        newTarget: '新建',
+        routeHint: '改选：/company route <决策> | <工作区或 新:名称> | <会话或 新:标题>',
+        inventory: '工作区 / 会话台账',
+        provision: '待补建',
         lastSync: '同步于 {time}',
       },
     };
@@ -227,6 +303,17 @@ window.__ModuleLoader__.load({
       .sat-co-textarea:focus { border-color: var(--dsw-alias-brand-primary); }
       .sat-co-row { display: flex; gap: 8px; align-items: flex-start; }
       .sat-co-ev { font-size: 11px; color: var(--dsw-alias-label-secondary); padding: 5px 9px; border-left: 2px solid var(--dsw-alias-border-l2); margin-bottom: 5px; overflow-wrap: anywhere; }
+      .sat-co-role { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+      .sat-co-role-box { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 11px 13px; }
+      .sat-co-role-h { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); margin-bottom: 6px; }
+      .sat-co-role-li { font-size: 11px; line-height: 1.65; color: var(--dsw-alias-label-primary); margin-bottom: 3px; overflow-wrap: anywhere; }
+      .sat-co-role-li b { font-weight: 600; }
+      .sat-co-dept { margin-bottom: 12px; }
+      .sat-co-dept-h { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+      .sat-co-dept-m { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-bottom: 7px; overflow-wrap: anywhere; }
+      .sat-co-route { margin-top: 9px; padding: 9px 10px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); border: 1px dashed var(--dsw-alias-border-l2); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+      .sat-co-route-h { font-weight: 600; margin-bottom: 3px; }
+      .sat-co-input { width: 100%; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: var(--dsw-alias-label-primary); font-family: inherit; outline: none; margin-top: 6px; }
       .sat-package { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
         border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
       .sat-package-head { display: flex; align-items: center; gap: 10px; }
@@ -693,6 +780,15 @@ window.__ModuleLoader__.load({
 
     function DecisionCard({ decision, t, busy, onDecide }) {
       const kindLabel = t(DECISION_LABEL[decision.kind] || 'requirement');
+      const routing = decision.routing;
+      const [projectSpec, setProjectSpec] = React.useState('');
+      const [taskSpec, setTaskSpec] = React.useState('');
+
+      const target = (label, node, key) => node
+        ? h('div', null, label + ' · ' +
+            (node.mode === 'existing' ? t('existingTarget') : t('newTarget')) + '：' + (node.title || node[key] || '—'))
+        : null;
+
       return h('div', { className: 'sat-co-card warn' },
         h('div', { className: 'sat-co-card-title' }, decision.subject),
         h('div', { className: 'sat-co-meta' },
@@ -700,6 +796,25 @@ window.__ModuleLoader__.load({
           h('span', { className: 'sat-co-chip' }, decision.status),
           h('span', { className: 'sat-co-chip' }, decision.createdAt)),
         h('div', { className: 'sat-co-meta' }, decision.detail),
+        routing && decision.kind === 'requirement'
+          ? h('div', { className: 'sat-co-route' }, [
+              h('div', { className: 'sat-co-route-h' }, t('routing')),
+              target(t('routingProject'), routing.project, 'workspaceId'),
+              target(t('routingTask'), routing.task, 'sessionId'),
+              h('div', null, (routing.reason || '')),
+              h('input', { className: 'sat-co-input', value: projectSpec,
+                placeholder: t('routingProject') + '（留空=不改）', onChange: (e) => setProjectSpec(e.target.value) }),
+              h('input', { className: 'sat-co-input', value: taskSpec,
+                placeholder: t('routingTask') + '（留空=不改）', onChange: (e) => setTaskSpec(e.target.value) }),
+              (projectSpec.trim() || taskSpec.trim())
+                ? h('button', { type: 'button', className: 'sat-btn', disabled: busy,
+                    onClick: () => onDecide('/company route ' + decision.id + ' | ' +
+                      (projectSpec.trim() || (routing.project.mode === 'new' ? '新:' + routing.project.title : routing.project.workspaceId)) + ' | ' +
+                      (taskSpec.trim() || (routing.task.mode === 'new' ? '新:' + routing.task.title : routing.task.sessionId))) }, t('routing') + ' ✓')
+                : null,
+              h('div', { className: 'sat-co-meta' }, t('routeHint')),
+            ])
+          : null,
         h('div', { className: 'sat-co-acts' },
           h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: busy,
             onClick: () => onDecide('/company approve ' + decision.id) }, t('approve')),
@@ -714,7 +829,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'sat-co-card-title' }, position.name),
         h('div', { className: 'sat-co-meta' },
           h('span', { className: 'sat-co-chip', 'data-tone': position.status === 'active' ? 'ok' : 'warn' },
-            position.status === 'active' ? t('active') : t('proposed')),
+            position.status === 'active' ? t('active') : t('planned')),
           h('span', { className: 'sat-co-chip' }, t('leader') + ': ' + ((position.leader && position.leader.name) || '—')),
           h('span', { className: 'sat-co-chip' }, t('headcount') + ' ' + position.headcount),
           h('span', { className: 'sat-co-chip' }, t('load') + ' ' + position.load)),
@@ -747,6 +862,9 @@ window.__ModuleLoader__.load({
       const pms = state.pms || [];
       const projects = state.projects || [];
       const events = state.events || [];
+      const departments = state.departments || [];
+      const inventory = state.inventory || { workspaces: [], sessions: [], byWorkspace: {} };
+      const cea = state.company && state.company.cea;
 
       const brief = () => {
         const text = draft.trim();
@@ -754,6 +872,46 @@ window.__ModuleLoader__.load({
         setDraft('');
         company.run('/company brief ' + text);
       };
+
+      const roleBox = (title, items) => h('div', { className: 'sat-co-role-box' }, [
+        h('div', { className: 'sat-co-role-h' }, title),
+      ].concat((items || []).map((item) =>
+        h('div', { className: 'sat-co-role-li' },
+          typeof item === 'string' ? item : h('span', null, h('b', null, (item.name || item.scope || '') + '：'), item.detail || item.limit || '')))));
+
+      const roleSection = cea ? h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, t('ceaRole')),
+        h('div', { className: 'sat-co-meta' }, t('identity') + '：' + (cea.identity || '')),
+        h('div', { className: 'sat-co-meta' }, t('mission') + '：' + (cea.mission || '')),
+        h('div', { className: 'sat-co-role' }, [
+          roleBox(t('capabilities'), cea.capabilities),
+          roleBox(t('requirements'), cea.requirements),
+          roleBox(t('habits'), cea.habits),
+          roleBox(t('authority'), cea.delegatedAuthority),
+          roleBox(t('forbidden'), cea.forbidden),
+          roleBox(t('acceptance'), [cea.acceptance]),
+        ]),
+      ]) : null;
+
+      const deptSection = departments.length ? h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('departments'), h('span', { className: 'sat-co-count' }, String(departments.length))]),
+        departments.map((dept) => h('div', { className: 'sat-co-dept', key: dept.id }, [
+          h('div', { className: 'sat-co-dept-h' }, dept.name + ' · ' + (dept.positionIds || []).length + ' ' + t('positions')),
+          h('div', { className: 'sat-co-dept-m' }, dept.mission || ''),
+          h('div', { className: 'sat-co-grid' }, positions.filter((p) => (dept.positionIds || []).includes(p.id))
+            .map((p) => h(PositionCard, { key: p.id, position: p, t }))),
+        ])),
+      ]) : null;
+
+      const inventorySection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('inventory'), h('span', { className: 'sat-co-count' }, String((inventory.workspaces || []).length))]),
+        h('div', { className: 'sat-co-grid' }, (inventory.workspaces || []).map((w) =>
+          h('div', { className: 'sat-co-card', key: w.id }, [
+            h('div', { className: 'sat-co-card-title' }, w.title || w.id),
+            h('div', { className: 'sat-co-meta' }, w.path || ''),
+            h('div', { className: 'sat-co-meta' }, ((inventory.byWorkspace || {})[w.id] || []).map((x) => '· ' + (x.title || x.id)).join('  ')),
+          ]))),
+      ]);
 
       const head = h('div', { className: 'sat-co-head' }, [
         h('div', { className: 'sat-co-title' }, (state.company && state.company.name) || t('companyTitle')),
@@ -786,10 +944,13 @@ window.__ModuleLoader__.load({
           : h('div', { className: 'sat-empty' }, t('empty')),
       ]);
 
-      const orgSection = h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('orgChart') + ' · ' + t('positions'), h('span', { className: 'sat-co-count' }, String(positions.length))]),
-        h('div', { className: 'sat-co-grid' }, positions.map((p) => h(PositionCard, { key: p.id, position: p, t }))),
-      ]);
+      const grouped = new Set();
+      for (const dept of departments) for (const id of (dept.positionIds || [])) grouped.add(id);
+      const ungrouped = positions.filter((p) => !grouped.has(p.id));
+      const orgSection = ungrouped.length ? h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('orgChart') + ' · ' + t('positions'), h('span', { className: 'sat-co-count' }, String(ungrouped.length))]),
+        h('div', { className: 'sat-co-grid' }, ungrouped.map((p) => h(PositionCard, { key: p.id, position: p, t }))),
+      ]) : null;
 
       const pmSection = h('div', { className: 'sat-co-sect' }, [
         h('div', { className: 'sat-co-h' }, [t('pms'), h('span', { className: 'sat-co-count' }, String(pms.length))]),
@@ -826,7 +987,8 @@ window.__ModuleLoader__.load({
       ];
 
       const body = h('div', { className: 'sat-co-body' }, notices.concat([
-        briefSection, decisionSection, orgSection, pmSection, projectSection, eventSection,
+        briefSection, decisionSection, roleSection, deptSection, orgSection,
+        pmSection, projectSection, inventorySection, eventSection,
       ]));
 
       return h('div', { className: 'sat-co' }, [h('style', null, css), head, body]);
