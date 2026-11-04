@@ -104,6 +104,7 @@ team_plan({
 - **只有人能批**：`/super-team approve <id>` 与面板按钮直接调用任务服务，**不经过工具管线**，因此不被守卫拦截。
 - **批准与否都是终态**：批准 = 完成；否决 = 完成 + 主题标 `REJECTED`——人说了「不」，工单该被重新规划，而不是永远等下去。
 - 判定结论**持久化在工单上**，插件重载 / HMR 后闸门区块、按钮与结论都还在。
+- **审批卡片**：举闸门时 `team_gate_request` 会同时走 `ctx.approval` 向人弹一张审批卡（对话里、手机上都能批）；批了就当场落定，没人应答 / 取消时闸门保持 `pending`，面板仍能批。「没人能问」绝不读成「已批准」。
 
 ### 5. 看门狗（Watchdog）
 
@@ -117,6 +118,8 @@ team_plan({
 
 告警列表**每次扫描重建**而不是追加：同一个异常不会在账本里堆成几十份重复条目，恢复了的异常自动消失。
 
+**停滞不只报告，还会回收**：Host 原生约束是「队友掉线 / 中断 / 失败都不会释放工单 owner」，所以队友挂了活就永远卡在那儿。看门狗现在会自己把这种工单 `release` 掉——`failed` 的 owner 立刻释放，`inactive` 的 owner 超过 `stallAfterMs`（默认 10 分钟）才释放，避免抢走一个只是正在思考的队友的活。这个开关是 `autoReleaseStalled`。
+
 ### 6. 团队面板（Control Deck）
 
 注册为会话内的一个 View 标签页——Web GUI 对话区的「**团队**」页：
@@ -127,9 +130,18 @@ team_plan({
 - **工作看板**：待处理 / 进行中 / 已完成三列（包与其子项在上面，看板只放独立工单）
 - **人工硬闸**：待批闸门 + 批准 / 否决按钮
 - **调度流水**：每次路由决策的时间、主题、目标与理由（升级给 Lead 的会标成「已升级给 Lead 判定」）
+- **最近完成**：刚落地的工单、负责人与完成时间（时间线视角，与看板「已完成」列是同一批工单的两种看法）
 - **看门狗告警**
 
+**轮询是条件触发的**：名册与工单本来就从 `agentTeam` 投影实时到达，只有硬闸 / 工作包 / 流水 / 完成记录才需要问 Host。看板没动、也没有在跑的活或待批闸门时，退避到 30 秒；一动就立刻拉一次并回到 8 秒。
+
 面板**写入** Host 的唯一通道是 `ctx.remote.commands.execute` → `/super-team`；**读取**以 Host 快照为主、Session 的 `agentTeam` 投影作兜底（字段名不同，兜底时做映射）。
+
+### 7. 配置与持久化
+
+- **`Config`**：插件现在有真正的配置 schema（Loader 用 `Config['~standard'].validate` 校验，手写 Standard Schema，**不依赖 zod**）。可调项：`keywordThreshold`、`watchdogIntervalMs`、`stallAfterMs`、`autoReleaseStalled`、`approvalGates`、`persistLedger`、`ledgerLimit`。
+- **调度流水落盘**：路由决策与完成记录写进 `~/.dsh/storages/super_agent_team_ledger/` 下的可读 JSON，插件重载后自动读回。走的是 `ctx.storage` 的 KV 通道（普通 descriptor，不需要 schema 库）；每个操作**用完即关**，因为后端规定「一个 unit 同时只能有一个 live handle」。
+- **团队模板**：`/super-team template [name]` 从工作区 `.team/roster.json`（或 `.team/roster/<name>.json`）读一份名册，一次性把预设成员 spawn 出来。名册是纯文本，团队自己就能改。
 
 ---
 
@@ -212,6 +224,7 @@ plugin_manager({ action: "install_bundle",
 /super-team state                       # 看整块看板（JSON）
 /super-team intake <需求>               # 手动丢给 Router
 /super-team plan <目标> | <子项> | …     # 拆成工作包（可加 all: / any: / manual: 前缀）
+/super-team template [name]             # 从 .team/roster.json 物化一支预设团队
 /super-team approve task-1              # 批准闸门 —— 模型走不通这条路
 /super-team reject task-1               # 否决闸门
 /super-team complete task-20            # 人来收口一个 manual 包
@@ -242,16 +255,20 @@ plugin_manager({ action: "install_bundle",
 ## 测试
 
 ```bash
-node test/host.test.mjs      # 规则层与闸门语义的单元测试
-node test/contract.test.mjs  # Host 任务状态机契约测试（闸门 + 工作包全链路）
-node test/render.test.mjs    # 面板渲染路径的离线测试
+node test/host.test.mjs        # 规则层与闸门语义的单元测试
+node test/contract.test.mjs    # Host 任务状态机契约测试（闸门 + 工作包全链路）
+node test/render.test.mjs      # 面板渲染路径的离线测试
+node test/render-ui.test.mjs   # 「最近完成」区块与条件轮询（含可控假时钟）
+node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇总 / 审批 / 团队模板
 ```
 
-共 **140 项断言**，全部通过。
+共 **188 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
 - **`host.test.mjs`** 覆盖纯函数：技能词的词边界匹配、队友点名的整词规则、工作包标记的格式与往返、`dispatchKey` 的身份语义。
+- **`features.test.mjs`** 覆盖这一轮新增的能力：Config schema 的校验与默认值、流水落盘与读回、失败 / 闲置 owner 的回收、完成记录的去重、审批通道与团队模板。它的假存储后端**复刻了真实约束**（一个 unit 只能有一个 live handle、key 必须 path-safe），所以能抓住「写不下去却静默成功」这类问题。
+- **`render-ui.test.mjs`** 用可控假时钟验证轮询节奏：打开立刻拉、安静时 8 秒、退避到 30 秒、有待批闸门时保持 8 秒、看板一变立刻察觉。
 
 ---
 
@@ -259,12 +276,12 @@ node test/render.test.mjs    # 面板渲染路径的离线测试
 
 诚实说明：
 
-- **调度流水与看门狗告警存在插件内存里**，重载即清空（看板、名册、闸门结论与工作包结构不受影响——工作包整棵树就在原生任务表里）。
-- **`team_intake` 的去重认「标题 + 说明」**，不认目标队友：把同一条说明派给两个不同队友时，第二个会被去重（`team_plan` 不受影响，它显式列出子项）。
+- **调度流水已落盘**，插件重载会从 `~/.dsh/storages/super_agent_team_ledger/` 读回；只有**看门狗告警**仍是内存态，重载即清空。快照里的 `persistence` 字段会明说当前是 `json` 还是 `open-failed: <原因>`，不会静默降级。
+- **`team_intake` 的去重认「标题 + 目标队友 + 说明」**：目标队友是从**路由流水**里读回的（工单本身不记它），所以插件重载、流水为空时会退化成只看标题 + 说明——那时的行为是**只拒绝、不重复建单**。
 - 闸门的「已批准 / 已否决」结论**持久化在工单上**，插件重载不丢。
 - 所有队友**共享同一个工作目录**（DSH Agent Teams 的既有约束），本插件未引入 worktree 隔离。
-- 面板每 8 秒轮询一次整块看板，当前规模可接受，后续可改为订阅投影。
-- 插件**暂不声明 `Config`**（取舍）：可调项暂用常量，后续可随依赖一起补。
+- 面板轮询已改成条件触发（8 秒 / 30 秒退避），但**仍是轮询**，不是订阅——因为插件私有状态不是会话投影，「订阅」需要引入 zod schema，而本地 `link:` 安装的 bundle 解析不了裸依赖。
+- **完成记录与看板「已完成」列是同一批工单**：前者是时间线（谁、什么时候交的），后者是状态视图，两处并存是有意的。
 
 ---
 

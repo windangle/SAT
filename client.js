@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
         awaitingHuman: 'waiting for a human',
         workItems: 'Work board',
         ledger: 'Router ledger',
+        completions: 'Recently completed',
         alerts: 'Watchdog alerts',
         intakeTitle: 'Dispatch work',
         intakePlaceholder: 'Describe the work for the Router…',
@@ -68,6 +69,7 @@ window.__ModuleLoader__.load({
         awaitingHuman: '等待人工确认',
         workItems: '工作看板',
         ledger: '调度流水',
+        completions: '最近完成',
         alerts: '看门狗告警',
         intakeTitle: '派活',
         intakePlaceholder: '描述要交给调度器的工作…',
@@ -333,12 +335,64 @@ window.__ModuleLoader__.load({
         route.reason ? h('span', { className: 'sat-route-reason' }, '· ' + route.reason) : null);
     }
 
+    /** How often the panel asks the Host for a snapshot while work is moving. */
+    const POLL_FAST_MS = 8000;
+    /** How often it asks when the board is quiet and nothing is unsettled. */
+    const POLL_SLOW_MS = 30000;
+
+    /**
+     * A stable fingerprint of the board's live parts.
+     *
+     * The roster and the task list arrive through the Session projection, so
+     * their fingerprint says whether the board moved since the last poll —
+     * without asking the Host at all.
+     */
+    function boardSignature(team) {
+      if (!team) return '';
+      const members = (team.members || [])
+        .map((member) => `${member.id}:${member.status || member.phase || ''}`)
+        .sort()
+        .join(',');
+      const tasks = (team.tasks || [])
+        .map((task) => `${task.id}:${task.revision}:${task.status}`)
+        .sort()
+        .join(',');
+      return `${members}|${tasks}`;
+    }
+
+    /**
+     * Whether the Host still owes the panel something: a gate waiting for a
+     * human, a package nobody closed, or a member still working. While any
+     * of those hold, the poll stays on the fast cadence.
+     */
+    function hasUnsettledWork(state) {
+      if (!state) return true;
+      const gates = Array.isArray(state.gates) ? state.gates : [];
+      const packages = Array.isArray(state.packages) ? state.packages : [];
+      const members = Array.isArray(state.members) ? state.members : [];
+      if (gates.some((gate) => gate.status === 'pending')) return true;
+      if (packages.some((pkg) => pkg.status !== 'completed')) return true;
+      if (members.some((member) => member.status === 'running')) return true;
+      return false;
+    }
+
+    /** One recently completed Work Item: when, what, and who finished it. */
+    function CompletionRow({ completion, task, t }) {
+      const subject = (task && (task.displaySubject || task.subject)) || completion.subject || '';
+      const time = completion.at ? new Date(completion.at).toLocaleTimeString() : '';
+      return h('div', { className: 'sat-route' },
+        h('span', { className: 'sat-route-time' }, time),
+        h('span', { className: 'sat-route-subject' }, subject),
+        h('span', { className: 'sat-chip' }, completion.owner || t('none')));
+    }
+
     /**
      * The Host control surface of one Team, read through the `super-team`
      * command. The board itself comes from the shared Session projection, so
      * it stays live even when this channel is unavailable.
      */
-    function useHostState(ctx, sessionId, enabled) {      const [state, setState] = React.useState(null);
+    function useHostState(ctx, sessionId, enabled, signature) {
+      const [state, setState] = React.useState(null);
       const [error, setError] = React.useState(null);
       const [busy, setBusy] = React.useState(false);
       const [syncedAt, setSyncedAt] = React.useState(null);
@@ -378,12 +432,42 @@ window.__ModuleLoader__.load({
         }
       }, [run]);
 
+      // The board's live parts come through the Session projection, so the
+      // poll only has to run when that projection moved, or when the Host
+      // still owes us something. When neither holds, it backs off.
+      const stateRef = React.useRef(null);
+      const signatureRef = React.useRef('');
+      const polledSignatureRef = React.useRef('');
+      React.useEffect(() => { stateRef.current = state; }, [state]);
+      React.useEffect(() => { signatureRef.current = signature; }, [signature]);
+
       React.useEffect(() => {
         if (!enabled) return undefined;
+        let timer = null;
+        let stopped = false;
+
+        const tick = async () => {
+          if (stopped) return;
+          await reload();
+          if (stopped) return;
+          const changed = polledSignatureRef.current !== signatureRef.current;
+          polledSignatureRef.current = signatureRef.current;
+          const unsettled = hasUnsettledWork(stateRef.current);
+          timer = setTimeout(tick, changed || unsettled ? POLL_FAST_MS : POLL_SLOW_MS);
+        };
+
+        // The panel must show the Host snapshot as soon as it opens, and a
+        // session switch must pull it again straight away. A board that moved
+        // restarts the cycle on the fast cadence too, so a change is never
+        // left waiting out a backoff.
+        polledSignatureRef.current = signatureRef.current;
         reload();
-        const timer = setInterval(reload, 8000);
-        return () => clearInterval(timer);
-      }, [enabled, reload]);
+        timer = setTimeout(tick, POLL_FAST_MS);
+        return () => {
+          stopped = true;
+          if (timer !== null) clearTimeout(timer);
+        };
+      }, [enabled, sessionId, signature, reload]);
 
       const decide = React.useCallback(async (taskId, decision) => {
         setBusy(true);
@@ -462,7 +546,11 @@ window.__ModuleLoader__.load({
         ? state.projectionsBySession[leadSessionId].values.agentTeam
         : undefined);
 
-      const host = useHostState(CONTEXT_REF.current, leadSessionId, true);
+      // The projection is the live signal: its fingerprint says whether the
+      // board moved, so the panel does not have to poll the Host to find out.
+      const signature = React.useMemo(() => boardSignature(team), [team]);
+
+      const host = useHostState(CONTEXT_REF.current, leadSessionId, true, signature);
       const remoteState = host.state;
 
       const members = mapMembers(remoteState, team);
@@ -476,6 +564,12 @@ window.__ModuleLoader__.load({
       const standalone = tasks.filter((task) => !task.isPackage && !packaged.has(task.id));
       const routes = remoteState && remoteState.routes ? remoteState.routes : [];
       const alerts = remoteState && remoteState.alerts ? remoteState.alerts : [];
+      // `completions` is newer than some Hosts: when it is missing the
+      // section is simply not rendered, and when it is empty it shows the
+      // empty state.
+      const completions = remoteState && Array.isArray(remoteState.completions)
+        ? remoteState.completions
+        : null;
 
       const running = members.filter((member) => member.status === 'running').length;
       const openGates = gates.filter((gate) => gate.status === 'pending').length;
@@ -557,6 +651,22 @@ window.__ModuleLoader__.load({
                   t('ledger'),
                   h('span', { className: 'sat-count' }, String(routes.length))),
                 h('div', { className: 'sat-ledger' }, routes.map((route, index) => h(RouteRow, { key: index, route, t }))))
+            : null,
+
+          completions
+            ? h('section', { className: 'sat-section' },
+                h('div', { className: 'sat-section-head' },
+                  t('completions'),
+                  completions.length ? h('span', { className: 'sat-count' }, String(completions.length)) : null),
+                completions.length
+                  ? h('div', { className: 'sat-ledger' },
+                      completions.slice(0, 20).map((completion, index) => h(CompletionRow, {
+                        key: completion.taskId || index,
+                        completion,
+                        task: tasks.find((task) => task.id === completion.taskId),
+                        t,
+                      })))
+                  : h('div', { className: 'sat-empty' }, t('empty')))
             : null,
 
           h('section', { className: 'sat-section' },

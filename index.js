@@ -27,9 +27,73 @@
 
 export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt', 'timer']
 
-/** Plugin-local ledger bounds. */
-const MAX_LEDGER = 60
-const WATCHDOG_INTERVAL_MS = 60_000
+/** Plugin defaults; the Config schema below fills the same values in. */
+const DEFAULTS = {
+  keywordThreshold: 2,
+  watchdogIntervalMs: 60_000,
+  stallAfterMs: 600_000,
+  autoReleaseStalled: true,
+  approvalGates: true,
+  persistLedger: true,
+  ledgerLimit: 60,
+}
+
+/**
+ * A minimal Standard Schema for this plugin's own config.
+ *
+ * The Loader validates a plugin row's config with
+ * `Config['~standard'].validate(config)`, so the schema does not have to be
+ * zod or schemastery. That matters here: a locally linked bundle cannot
+ * resolve a bare dependency, so a zod-based schema would make the plugin
+ * impossible to install from the workspace.
+ */
+function standardSchema(fields) {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: '@local/super-agent-team',
+      validate(value) {
+        const input = value && typeof value === 'object' ? value : {}
+        const issues = []
+        const output = {}
+        for (const [key, field] of Object.entries(fields)) {
+          const raw = input[key]
+          if (raw === undefined) {
+            output[key] = field.default
+            continue
+          }
+          const problem = field.check(raw)
+          if (problem) issues.push({ message: problem, path: [key] })
+          else output[key] = raw
+        }
+        if (issues.length) return { issues }
+        return { value: output }
+      },
+    },
+  }
+}
+
+const integerField = (min, max, fallback) => ({
+  default: fallback,
+  check: (raw) => (Number.isSafeInteger(raw) && raw >= min && raw <= max
+    ? undefined
+    : `must be an integer between ${min} and ${max}`),
+})
+
+const booleanField = (fallback) => ({
+  default: fallback,
+  check: (raw) => (typeof raw === 'boolean' ? undefined : 'must be a boolean'),
+})
+
+export const Config = standardSchema({
+  keywordThreshold: integerField(1, 20, DEFAULTS.keywordThreshold),
+  watchdogIntervalMs: integerField(5_000, 3_600_000, DEFAULTS.watchdogIntervalMs),
+  stallAfterMs: integerField(0, 86_400_000, DEFAULTS.stallAfterMs),
+  autoReleaseStalled: booleanField(DEFAULTS.autoReleaseStalled),
+  approvalGates: booleanField(DEFAULTS.approvalGates),
+  persistLedger: booleanField(DEFAULTS.persistLedger),
+  ledgerLimit: integerField(10, 500, DEFAULTS.ledgerLimit),
+})
 
 /**
  * Rule-stage skill lexicon. A teammate's skills are the lexicon terms that
@@ -262,14 +326,21 @@ function sectionOrder(scoped, name, fallback) {
   }
 }
 
-export function apply(ctx) {
+export function apply(ctx, config = {}) {
+  /** The validated configuration, with the defaults already filled in. */
+  const settings = { ...DEFAULTS, ...(config ?? {}) }
+
   /** Routing ledger and watchdog alerts, per Team. */
   const ledgers = new Map()
+  /** The last status seen for every Work Item, per Team: how a completion is spotted. */
+  const observed = new Map()
+  /** When a Work Item was first seen in progress, per Team: how a stall is aged. */
+  const inProgressSince = new Map()
 
   function ledger(teamId) {
     let entry = ledgers.get(teamId)
     if (!entry) {
-      entry = { routes: [], alerts: [] }
+      entry = { routes: [], alerts: [], completions: [] }
       ledgers.set(teamId, entry)
     }
     return entry
@@ -284,13 +355,26 @@ export function apply(ctx) {
     const book = ledger(teamId)
     const entry = { time: Date.now(), ...record }
     book.routes.unshift(entry)
-    if (book.routes.length > MAX_LEDGER) book.routes.length = MAX_LEDGER
+    if (book.routes.length > settings.ledgerLimit) book.routes.length = settings.ledgerLimit
+    void persistRoute(teamId, entry)
     return entry
   }
 
   /** The stable identity of one watchdog alert, used to deduplicate scans. */
   function alertKey(alert) {
     return `${alert.kind}:${alert.taskId ?? alert.member ?? ''}`
+  }
+
+  /**
+   * Look up an optional service. A guarded context throws for a service it
+   * does not declare, so every optional lookup goes through here.
+   */
+  function optionalService(name) {
+    try {
+      return ctx.get(name)
+    } catch {
+      return undefined
+    }
   }
 
   /** Resolve the calling Team member, refusing callers outside a Team. */
@@ -308,7 +392,7 @@ export function apply(ctx) {
    * deterministic rules. Returns the winning teammate and the reason, or
    * undefined when no rule places the request.
    */
-  function ruleRoute(members, request) {
+  function ruleRoute(members, request, keywordThreshold) {
     const text = `${request.subject}\n${request.description ?? ''}`
     const requestTokens = tokenize(text)
     const requestTags = skillTags(text)
@@ -329,7 +413,7 @@ export function apply(ctx) {
       } else if (sharedTags.length > 0) {
         score = 100 + sharedTags.length * 10
         reason = `skill affinity on ${sharedTags.join(', ')}`
-      } else if (hits >= 2) {
+      } else if (hits >= keywordThreshold) {
         score = 10 + hits
         reason = `${hits} keyword hits in the teammate description`
       }
@@ -367,7 +451,7 @@ export function apply(ctx) {
 
     const placement = explicitTarget
       ? { target: explicitTarget, reason: 'an explicit target was requested', stage: 'direct' }
-      : ruleRoute(members, request)
+      : ruleRoute(members, request, settings.keywordThreshold)
 
     const writeScopes = Array.isArray(request.writeScopes) ? request.writeScopes : []
 
@@ -506,6 +590,116 @@ export function apply(ctx) {
     }
   }
 
+  // -------------------------------------------------------- 人工闸门通道 --
+
+  /**
+   * Ask the human through the approval seam.
+   *
+   * The approval service is the deployment's own one-shot decision channel:
+   * the Web UI renders it as a card in the conversation, and a deployment can
+   * compose a machine answerer (a chat bot on a phone, for example). The
+   * request has to be made from inside an open turn, which is exactly where
+   * `team_gate_request` runs.
+   *
+   * A missing answerer or a cancelled question leaves the gate *pending*:
+   * "nobody could be asked" must never read as "approved", and it must not
+   * read as "rejected" either — the human can still decide from the panel.
+   */
+  async function askApproval(agent, kind, subject, detail, signal) {
+    if (!settings.approvalGates) return 'pending'
+    const approval = optionalService('approval')
+    if (!approval) return 'pending'
+    try {
+      const outcome = await approval.request({
+        agent,
+        toolName: 'team_gate_request',
+        reason: `${kind}: ${subject}${detail ? ` — ${detail}` : ''}`,
+        displayReason: {
+          en: `SuperAgentTeam hard gate (${kind}): ${subject}`,
+          zh: `SuperAgentTeam 人工硬闸（${kind}）：${subject}`,
+        },
+        signal,
+      })
+      if (outcome === 'allowed-once') return 'approved'
+      if (outcome === 'rejected') return 'rejected'
+      return 'pending'
+    } catch {
+      return 'pending'
+    }
+  }
+
+  /**
+   * Materialise a roster template: the members written in the team's plain
+   * text roster, one durable teammate each.
+   *
+   * The roster lives in the workspace (`.team/roster.json`, or
+   * `.team/roster/<name>.json`) so a team can edit it without touching the
+   * plugin — the same plain-text idea as the Open Company standard.
+   */
+  async function materializeTemplate(agent, name) {
+    const membership = requireMember(agent, 'super-team')
+    if (membership.role !== 'lead') {
+      throw new Error('Only the Team Lead can materialise a roster template.')
+    }
+    const directory = teamWorkingDirectory(agent)
+    const relative = name ? `.team/roster/${name}.json` : '.team/roster.json'
+    let text
+    try {
+      const fs = optionalService('fs')
+      if (!fs) throw new Error('This deployment has no filesystem service, so a roster template cannot be read.')
+      const target = await fs.resolve(`${directory}/${relative}`, { cwd: directory })
+      text = await fs.readText(target)
+    } catch {
+      throw new Error(`No roster template at ${relative}. Create it first, for example:\n{"members":[{"name":"tester","description":"...","prompt":"..."}]}`)
+    }
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch (error) {
+      throw new Error(`${relative} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    const members = Array.isArray(parsed) ? parsed : parsed.members
+    if (!Array.isArray(members) || !members.length) {
+      throw new Error(`${relative} does not list any members.`)
+    }
+
+    const roster = ctx.agentTeams.listMembers(agent).map((member) => member.name)
+    const created = []
+    const skipped = []
+    for (const member of members) {
+      const memberName = String(member?.name ?? '').trim()
+      if (!memberName) continue
+      if (roster.includes(memberName)) {
+        skipped.push(memberName)
+        continue
+      }
+      await ctx.agentTeams.spawnTeammate(agent, {
+        name: memberName,
+        description: String(member.description ?? ''),
+        prompt: [{ type: 'text', text: String(member.prompt ?? member.description ?? memberName) }],
+        context: 'fresh',
+        provider: 'spawn',
+        signal: new AbortController().signal,
+      })
+      created.push(memberName)
+    }
+    return {
+      created,
+      skipped,
+      text: `Roster template ${relative}: created ${created.length ? created.join(', ') : 'nothing'}${skipped.length ? `, already on the roster: ${skipped.join(', ')}` : ''}.`,
+    }
+  }
+
+  /** The working directory of the session that owns this Team. */
+  function teamWorkingDirectory(agent) {
+    const working = optionalService('workingDirectory')
+    try {
+      const directory = working?.get(agent.session)
+      if (directory) return directory
+    } catch { /* fall through */ }
+    return working?.defaultDirectory ?? '.'
+  }
+
   // ------------------------------------------------------------ Packages --
 
   /**
@@ -597,7 +791,7 @@ export function apply(ctx) {
 
   // ---------------------------------------------------------------- Gates --
   /** Raise a human hard gate. The gate is a Work Item other work can block on. */
-  async function requestGate(agent, request) {
+  async function requestGate(agent, request, signal = new AbortController().signal) {
     const membership = requireMember(agent, 'team_gate_request')
     const kind = String(request.kind ?? 'sensitive')
     const subject = String(request.subject ?? 'Approval required')
@@ -612,7 +806,13 @@ export function apply(ctx) {
       reason: `hard gate "${kind}" raised and waiting for a human decision`,
       taskId: task.id,
     })
-    return { gateId: task.id, kind, subject, status: 'pending' }
+    // The gate is on the board. Now ask the human through the approval
+    // seam, so the decision can land in the conversation (and on a phone).
+    const verdict = await askApproval(agent, kind, subject, request.detail ?? '', signal)
+    if (verdict !== 'pending') {
+      await decideGate(agent, task.id, verdict === 'approved' ? 'approve' : 'reject')
+    }
+    return { gateId: task.id, kind, subject, status: verdict }
   }
 
   /**
@@ -757,6 +957,99 @@ export function apply(ctx) {
     return found
   }
 
+  // ------------------------------------------------- 停滞回收 / 完成汇总 --
+
+  /**
+   * Age the Work Items that are in progress, and release the ones whose
+   * owner will not come back.
+   *
+   * The Host never releases a task owner on its own: "inactivity,
+   * interruption, process exit, and failed work do not release a task owner".
+   * So a teammate that dies leaves its Work Item claimed forever and nobody
+   * else can pick it up. The watchdog already sees the stall; this is where
+   * the stall gets *recovered*.
+   *
+   * A teammate that is merely idle is not a dead teammate — it may be
+   * thinking, or waiting for a message — so an idle owner only loses its
+   * claim after a long grace period, while a failed owner loses it at once.
+   */
+  async function releaseStalled(agent, tasks, now) {
+    if (!settings.autoReleaseStalled) return []
+    const membership = ctx.agentTeams.tryMembership(agent)
+    if (!membership) return []
+    const teamId = membership.id
+    const aging = inProgressSince.get(teamId) ?? new Map()
+    const members = ctx.agentTeams.listMembers(agent)
+    const released = []
+
+    for (const task of tasks) {
+      if (task.status !== 'in_progress' || !task.ownerName) {
+        aging.delete(task.id)
+        continue
+      }
+      if (!aging.has(task.id)) {
+        aging.set(task.id, now)
+        continue
+      }
+      const owner = members.find((member) => member.name === task.ownerName)
+      if (!owner) continue
+      const failed = owner.status === 'failed'
+      const idleFor = now - aging.get(task.id)
+      const idle = owner.status === 'inactive' && idleFor >= settings.stallAfterMs
+      if (!failed && !idle) continue
+      try {
+        await ctx.agentTeams.updateTask(agent, {
+          taskId: task.id,
+          expectedRevision: task.revision,
+          action: 'release',
+        })
+        released.push({
+          kind: 'released',
+          taskId: task.id,
+          owner: task.ownerName,
+          detail: failed
+            ? `owner "${task.ownerName}" failed, the Work Item was released`
+            : `owner "${task.ownerName}" was idle for ${Math.round(idleFor / 1000)}s, the Work Item was released`,
+        })
+        aging.delete(task.id)
+      } catch {
+        /* the Work Item changed under us; the next scan sees the new state */
+      }
+    }
+    inProgressSince.set(teamId, aging)
+    return released
+  }
+
+  /**
+   * Notice the Work Items that have just been completed.
+   *
+   * The Lead already receives a completion notice in its inbox, but there is
+   * no place that says "what did this team actually land". This keeps that
+   * list, so the panel can show it and the Lead can answer "what is done".
+   */
+  function observeCompletions(teamId, tasks, now) {
+    const seen = observed.get(teamId) ?? new Map()
+    const found = []
+    for (const task of tasks) {
+      const before = seen.get(task.id)
+      if (before && before.status !== 'completed' && task.status === 'completed') {
+        found.push({
+          taskId: task.id,
+          subject: task.subject,
+          owner: task.ownerName ?? null,
+          at: now,
+        })
+      }
+      seen.set(task.id, {
+        status: task.status,
+        subject: task.subject,
+        owner: task.ownerName ?? null,
+      })
+    }
+    observed.set(teamId, seen)
+    return found
+  }
+
   // ---------------------------------------------------------------- Tools --
 
   /** Render a canonical tool value as text content. */
@@ -822,8 +1115,18 @@ export function apply(ctx) {
     // A package whose policy is satisfied is settled before the board is
     // read, so the panel never shows a finished package as still open.
     await settleReadyPackages(agent)
+    await restoreLedger(teamId)
     const tasks = ctx.agentTeams.listTasks(agent)
     const board = ledger(teamId)
+
+    // Notice the Work Items that have just landed, so the panel can show
+    // what this team actually delivered.
+    const now = Date.now()
+    const fresh = observeCompletions(teamId, tasks, now)
+    if (fresh.length) {
+      board.completions = [...fresh, ...(board.completions ?? [])].slice(0, 50)
+      for (const completion of fresh) void persistCompletion(teamId, completion)
+    }
 
     // Gates are derived from the durable board, so the gate list and every
     // verdict survive a plugin reload; nothing about a gate lives only in
@@ -880,14 +1183,137 @@ export function apply(ctx) {
       packages: derivePackages(tasks),
       routes: board.routes,
       alerts: board.alerts,
+      completions: board.completions ?? [],
+      persistence: await persistenceStatus(),
       availableCommands: commandCatalog(agent),
+    }
+  }
+
+  /**
+   * The durable ledger, when the storage hub offers a KV backend.
+   *
+   * Two facts about the storage hub shape this code:
+   *
+   * 1. **One live handle per unit.** The backend refuses to open a unit that
+   *    is already open, so a plugin that holds a handle across its lifetime
+   *    blocks every later instance of itself. The ledger therefore opens the
+   *    unit for one operation and closes it again, and the operations are
+   *    serialised so two of them never overlap.
+   * 2. **The KV facet takes a plain descriptor** — no schema library — so
+   *    the ledger persists without the plugin needing a bare dependency it
+   *    could not resolve.
+   */
+  const LEDGER_UNIT = 'super_agent_team_ledger'
+  const LEDGER_TABLES = ['ledger', 'completions']
+  /** Serialises the storage operations: the unit allows one handle at a time. */
+  let storageQueue = Promise.resolve()
+  /** Why the store could not be opened, when it could not. */
+  let ledgerStoreFailure
+  /** Makes every ledger key unique, even within one millisecond. */
+  let ledgerSequence = 0
+  /** The Teams whose durable ledger has already been read back. */
+  const restored = new Set()
+
+  /** Run one storage operation, opening and closing the unit around it. */
+  function enqueueStorage(task) {
+    const run = storageQueue.then(task, task)
+    storageQueue = run.then(() => {}, () => {})
+    return run
+  }
+
+  async function withLedgerStore(operation) {
+    const hub = optionalService('storage')
+    const backend = hub?.backend?.get('json')
+    const facet = backend?.kv
+    if (!facet) throw new Error('the json storage backend is not available')
+    const unit = await facet.open({
+      name: LEDGER_UNIT,
+      version: 1,
+      tables: LEDGER_TABLES,
+      hasGlobal: false,
+      layout: 'per-record',
+    })
+    try {
+      return await operation(unit)
+    } finally {
+      await unit.close().catch(() => {})
+    }
+  }
+
+  /**
+   * Write one routing decision down, best effort.
+   *
+   * The key becomes a file name, so it has to be path-safe: the storage
+   * backend rejects anything else.
+   */
+  async function persistRoute(teamId, record) {
+    if (!settings.persistLedger) return
+    try {
+      await enqueueStorage(() => withLedgerStore((unit) =>
+        unit.putRecord('ledger', ledgerKey(record), { ...record, teamId })))
+    } catch (error) {
+      ledgerStoreFailure = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  /** A path-safe, unique key for one ledger record. */
+  function ledgerKey(record) {
+    ledgerSequence += 1
+    return `${record.time}-${ledgerSequence}`
+  }
+
+  /** Write one completion down, best effort. */
+  async function persistCompletion(teamId, completion) {
+    if (!settings.persistLedger) return
+    try {
+      await enqueueStorage(() => withLedgerStore((unit) =>
+        unit.putRecord('completions', ledgerKey(completion), { ...completion, teamId })))
+    } catch (error) {
+      ledgerStoreFailure = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  /**
+   * Why the durable ledger is (not) available. A silent fallback would make
+   * "the ledger is not persisted" indistinguishable from "nothing happened".
+   */
+  async function persistenceStatus() {
+    if (!settings.persistLedger) return 'disabled'
+    try {
+      await enqueueStorage(() => withLedgerStore(async () => {}))
+      return 'json'
+    } catch (error) {
+      return `open-failed: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+
+  /** Read the durable ledger back for one Team. */
+  async function restoreLedger(teamId) {
+    if (restored.has(teamId)) return
+    restored.add(teamId)
+    if (!settings.persistLedger) return
+    try {
+      const { tables } = await enqueueStorage(() => withLedgerStore((unit) => unit.loadAll()))
+      const book = ledger(teamId)
+      const routes = Object.values(tables?.ledger ?? {})
+        .filter((record) => record.teamId === teamId)
+        .sort((a, b) => b.time - a.time)
+        .slice(0, settings.ledgerLimit)
+      if (routes.length) book.routes = routes
+      const completions = Object.values(tables?.completions ?? {})
+        .filter((record) => record.teamId === teamId)
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 50)
+      if (completions.length) book.completions = completions
+    } catch (error) {
+      ledgerStoreFailure = error instanceof Error ? error.message : String(error)
     }
   }
 
   /** The command names this agent can run, for diagnosis. */
   function commandCatalog(agent) {
     try {
-      const commands = ctx.get('commands')
+      const commands = optionalService('commands')
       if (!commands) return []
       return commands.list(agent).map((descriptor) => descriptor.name)
     } catch {
@@ -1001,7 +1427,7 @@ export function apply(ctx) {
         },
         output: { schema: OUTPUT_OBJECT, render: renderJson },
         async execute(args, exec) {
-          return await requestGate(exec.agent, { kind: args.kind, subject: args.subject, detail: args.detail })
+          return await requestGate(exec.agent, { kind: args.kind, subject: args.subject, detail: args.detail }, exec.signal)
         },
       }))
 
@@ -1080,7 +1506,7 @@ export function apply(ctx) {
     commandCtx.commands.register({
     name: 'super-team',
     description: 'SuperAgentTeam control surface: inspect the board, submit work to the Router, or settle a human hard gate.',
-    input: { hint: '<state | intake <request> | plan <goal> | <item> | ... | approve <taskId> | reject <taskId> | complete <packageId> | delete <taskId> | clean-scopes>' },
+    input: { hint: '<state | intake <request> | plan <goal> | <item> | ... | template [name] | approve <taskId> | reject <taskId> | complete <packageId> | delete <taskId> | clean-scopes>' },
     handler: async ({ agent, rawInput, signal }) => {
       const line = String(rawInput ?? '').trim()
       const [verb = '', ...rest] = line.split(/\s+/)
@@ -1127,6 +1553,10 @@ export function apply(ctx) {
               kind: 'success',
               text: `Package ${result.packageId} (${result.goal}) with ${result.children.length} item(s), completion "${result.completion}".`,
             }
+          }
+          case 'template': {
+            const result = await materializeTemplate(agent, argument)
+            return { kind: 'success', text: result.text }
           }
           case 'complete': {
             if (!argument) return { kind: 'error', text: 'complete needs a Work Package id.' }
@@ -1197,12 +1627,27 @@ export function apply(ctx) {
   // ----------------------------------------------------------- Watchdog ---
 
   ctx.effect(() => ctx.timer.interval(() => {
-    for (const agent of ctx.agents.list()) {
-      const membership = ctx.agentTeams.tryMembership(agent)
-      if (membership?.role !== 'lead') continue
-      try { scanTeam(agent) } catch { /* a team can disappear mid-scan */ }
-    }
-  }, WATCHDOG_INTERVAL_MS), 'super-agent-team.watchdog()')
+    void (async () => {
+      for (const agent of ctx.agents.list()) {
+        const membership = ctx.agentTeams.tryMembership(agent)
+        if (membership?.role !== 'lead') continue
+        try {
+          // Recover first: a Work Item whose owner will not come back has to
+          // become claimable again, or it blocks the team forever.
+          const board = ctx.agentTeams.listTasks(agent)
+          const released = await releaseStalled(agent, board, Date.now())
+          for (const alert of released) pushAlert(membership.id, alert)
+          const landed = observeCompletions(membership.id, board, Date.now())
+          if (landed.length) {
+            const book = ledger(membership.id)
+            book.completions = [...landed, ...(book.completions ?? [])].slice(0, 50)
+            for (const completion of landed) void persistCompletion(membership.id, completion)
+          }
+          scanTeam(agent)
+        } catch { /* a team can disappear mid-scan */ }
+      }
+    })()
+  }, settings.watchdogIntervalMs), 'super-agent-team.watchdog()')
 
   // --------------------------------------------------------- Public API ---
 

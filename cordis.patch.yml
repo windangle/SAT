@@ -1,4 +1,6 @@
 - insert:
     - id: super-agent-team
       name: '@local/super-agent-team'
-      config: {}
+      config:
+        # 5 分钟没人管就释放工单；其余项用插件自带默认值
+        stallAfterMs: 300000
