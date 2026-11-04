@@ -84,6 +84,28 @@ window.__ModuleLoader__.load({
         routeHint: 'Change routing: /company route <decision> | <workspace or 新:name> | <session or 新:title>',
         inventory: 'Workspace / session inventory',
         provision: 'Pending provisioning',
+        myProjects: 'My projects',
+        myDecisions: 'Needs your decision',
+        allProjects: 'All',
+        runningProjects: 'Running',
+        acceptingProjects: 'Awaiting acceptance',
+        acceptedProjects: 'Accepted',
+        noDecisions: 'Nothing needs your decision right now.',
+        projectTasks: 'Work items',
+        projectPositions: 'Positions',
+        hqLabel: 'CEA HQ',
+        hqUnbound: 'HQ not bound — the current session acts as CEA',
+        hqBind: 'Set this session as CEA HQ',
+        charter: 'Governance charter (settled)',
+        orgSecondary: 'Organisation, workload & activity (secondary)',
+        showLess: 'Collapse',
+        showMore: 'Expand',
+        knowledgeExport: 'Export knowledge',
+        exported: 'Exported',
+        decided: 'Decided',
+        projectProgress: 'Progress',
+        awaitingAcceptance: 'Awaiting your acceptance',
+        needsRoute: 'Needs project/task routing',
         completions: 'Recently completed',
         alerts: 'Watchdog alerts',
         intakeTitle: 'Dispatch work',
@@ -127,6 +149,28 @@ window.__ModuleLoader__.load({
         routeHint: 'Change routing: /company route <decision> | <workspace or 新:name> | <session or 新:title>',
         inventory: 'Workspace / session inventory',
         provision: 'Pending provisioning',
+        myProjects: 'My projects',
+        myDecisions: 'Needs your decision',
+        allProjects: 'All',
+        runningProjects: 'Running',
+        acceptingProjects: 'Awaiting acceptance',
+        acceptedProjects: 'Accepted',
+        noDecisions: 'Nothing needs your decision right now.',
+        projectTasks: 'Work items',
+        projectPositions: 'Positions',
+        hqLabel: 'CEA HQ',
+        hqUnbound: 'HQ not bound — the current session acts as CEA',
+        hqBind: 'Set this session as CEA HQ',
+        charter: 'Governance charter (settled)',
+        orgSecondary: 'Organisation, workload & activity (secondary)',
+        showLess: 'Collapse',
+        showMore: 'Expand',
+        knowledgeExport: 'Export knowledge',
+        exported: 'Exported',
+        decided: 'Decided',
+        projectProgress: 'Progress',
+        awaitingAcceptance: 'Awaiting your acceptance',
+        needsRoute: 'Needs project/task routing',
         lastSync: 'Synced {time}',
       },
       zh: {
@@ -200,6 +244,28 @@ window.__ModuleLoader__.load({
         routeHint: '改选：/company route <决策> | <工作区或 新:名称> | <会话或 新:标题>',
         inventory: '工作区 / 会话台账',
         provision: '待补建',
+        myProjects: '我的项目',
+        myDecisions: '需要我决策',
+        allProjects: '全部',
+        runningProjects: '进行中',
+        acceptingProjects: '待验收',
+        acceptedProjects: '已验收',
+        noDecisions: '当前没有需要你决策的事情。',
+        projectTasks: '工单',
+        projectPositions: '参与岗位',
+        hqLabel: 'CEA 总部',
+        hqUnbound: '尚未绑定总部会话，当前会话代行 CEA',
+        hqBind: '把当前会话设为董事长办公室',
+        charter: '治理章程（已拍板）',
+        orgSecondary: '组织结构 · 工作负载 · 公司动态（次要）',
+        showLess: '收起',
+        showMore: '展开',
+        knowledgeExport: '导出知识',
+        exported: '已导出',
+        decided: '已拍板',
+        projectProgress: '进展',
+        awaitingAcceptance: '待你验收',
+        needsRoute: '待项目/任务定位',
         completions: '最近完成',
         alerts: '看门狗告警',
         intakeTitle: '派活',
@@ -243,6 +309,28 @@ window.__ModuleLoader__.load({
         routeHint: '改选：/company route <决策> | <工作区或 新:名称> | <会话或 新:标题>',
         inventory: '工作区 / 会话台账',
         provision: '待补建',
+        myProjects: '我的项目',
+        myDecisions: '需要我决策',
+        allProjects: '全部',
+        runningProjects: '进行中',
+        acceptingProjects: '待验收',
+        acceptedProjects: '已验收',
+        noDecisions: '当前没有需要你决策的事情。',
+        projectTasks: '工单',
+        projectPositions: '参与岗位',
+        hqLabel: 'CEA 总部',
+        hqUnbound: '尚未绑定总部会话，当前会话代行 CEA',
+        hqBind: '把当前会话设为董事长办公室',
+        charter: '治理章程（已拍板）',
+        orgSecondary: '组织结构 · 工作负载 · 公司动态（次要）',
+        showLess: '收起',
+        showMore: '展开',
+        knowledgeExport: '导出知识',
+        exported: '已导出',
+        decided: '已拍板',
+        projectProgress: '进展',
+        awaitingAcceptance: '待你验收',
+        needsRoute: '待项目/任务定位',
         lastSync: '同步于 {time}',
       },
     };
@@ -314,6 +402,30 @@ window.__ModuleLoader__.load({
       .sat-co-route { margin-top: 9px; padding: 9px 10px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); border: 1px dashed var(--dsw-alias-border-l2); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
       .sat-co-route-h { font-weight: 600; margin-bottom: 3px; }
       .sat-co-input { width: 100%; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: var(--dsw-alias-label-primary); font-family: inherit; outline: none; margin-top: 6px; }
+      .sat-co-hero { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+      .sat-co-stat { flex: 1 1 120px; min-width: 120px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 10px 13px; }
+      .sat-co-stat-n { font-size: 22px; font-weight: 650; line-height: 1.1; }
+      .sat-co-stat-l { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-co-stat[data-tone="warn"] .sat-co-stat-n { color: var(--dsw-alias-state-warn-primary); }
+      .sat-co-stat[data-tone="ok"] .sat-co-stat-n { color: var(--dsw-alias-state-success-primary); }
+      .sat-co-primary { margin-top: 18px; }
+      .sat-co-primary-h { font-size: 14px; font-weight: 650; margin-bottom: 9px; display: flex; align-items: center; gap: 8px; }
+      .sat-co-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 9px; }
+      .sat-co-tab { font-size: 11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-secondary); cursor: pointer; }
+      .sat-co-tab[data-on="1"] { background: var(--dsw-alias-brand-primary); color: #fff; border-color: var(--dsw-alias-brand-primary); }
+      .sat-co-proj { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 13px 15px; min-width: 0; }
+      .sat-co-proj[data-tone="warn"] { border-color: var(--dsw-alias-state-warn-primary); }
+      .sat-co-proj-h { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .sat-co-proj-t { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+      .sat-co-proj-g { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-top: 6px; line-height: 1.6; overflow-wrap: anywhere; }
+      .sat-co-proj-kv { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 5px; line-height: 1.6; overflow-wrap: anywhere; }
+      .sat-co-proj-kv b { color: var(--dsw-alias-label-primary); font-weight: 600; }
+      .sat-co-bar { height: 5px; border-radius: 3px; background: var(--dsw-alias-bg-layer-2); margin-top: 9px; overflow: hidden; }
+      .sat-co-bar > i { display: block; height: 100%; background: var(--dsw-alias-brand-primary); }
+      .sat-co-fold { margin-top: 22px; border-top: 1px solid var(--dsw-alias-border-l1); padding-top: 12px; }
+      .sat-co-fold-btn { width: 100%; text-align: left; background: transparent; border: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 600; padding: 8px 0; cursor: pointer; font-family: inherit; }
+      .sat-co-fold-btn:hover { color: var(--dsw-alias-label-primary); }
+      .sat-co-charter { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 9px; }
       .sat-package { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
         border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
       .sat-package-head { display: flex; align-items: center; gap: 10px; }
@@ -849,14 +961,89 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** Global company overview: the entry above the workspace list. */
+    /** A collapsible secondary section (org / load / activity). */
+    function Fold({ title, defaultOpen, children }) {
+      const [open, setOpen] = React.useState(Boolean(defaultOpen));
+      return h('div', { className: 'sat-co-fold' }, [
+        h('button', { type: 'button', className: 'sat-co-fold-btn', onClick: () => setOpen(!open) },
+          (open ? '▾ ' : '▸ ') + title),
+        open ? h('div', null, children) : null,
+      ]);
+    }
+
+    function Stat({ n, label, tone }) {
+      return h('div', { className: 'sat-co-stat', 'data-tone': tone || '' }, [
+        h('div', { className: 'sat-co-stat-n' }, String(n)),
+        h('div', { className: 'sat-co-stat-l' }, label),
+      ]);
+    }
+
+    /** Project status → display tone. */
+    function projectTone(project) {
+      if (project.chairmanDecision === 'accepted') return 'ok';
+      if (project.status === 'acceptance' || project.status === 'confirming') return 'warn';
+      return '';
+    }
+
+    function projectStatusText(project, t) {
+      if (project.chairmanDecision === 'accepted') return t('acceptedProjects');
+      if (project.status === 'acceptance') return t('awaitingAcceptance');
+      if (project.status === 'confirming') return t('needsRoute');
+      return t('runningProjects');
+    }
+
+    /** Rich project card: this is what the Chairman came to see. */
+    function ProjectCard({ project, positions, t, onDecide }) {
+      const tone = projectTone(project);
+      const items = project.workItems || [];
+      const routed = project.routing;
+      const pm = project.pmId || '—';
+      return h('div', { className: 'sat-co-proj', 'data-tone': tone }, [
+        h('div', { className: 'sat-co-proj-h' }, [
+          h('div', { className: 'sat-co-proj-t' }, project.title),
+          h('span', { className: 'sat-co-chip', 'data-tone': tone === 'warn' ? 'warn' : (tone === 'ok' ? 'ok' : '') },
+            projectStatusText(project, t)),
+        ]),
+        h('div', { className: 'sat-co-proj-g' }, project.goal || ''),
+        h('div', { className: 'sat-co-proj-kv' }, [
+          h('b', null, t('status')), '：' + (project.status || '') + '　',
+          h('b', null, 'PM'), '：' + pm + '　',
+          h('b', null, t('projectProgress')), '：' + items.length + ' ' + t('projectTasks'),
+        ]),
+        items.length ? h('div', { className: 'sat-co-bar' }, [
+          h('i', { style: { width: (project.chairmanDecision === 'accepted' ? 100 :
+            project.status === 'acceptance' ? 85 : Math.min(70, 20 + items.length * 15)) + '%' } }),
+        ]) : null,
+        items.length ? h('div', { className: 'sat-co-proj-kv' }, items.map((x) => '· ' + x).join('  ')) : null,
+        routed ? h('div', { className: 'sat-co-proj-kv' },
+          t('routingProject') + '：' + (routed.project?.title || '—') + '　' +
+          t('routingTask') + '：' + (routed.task?.title || '—')) : null,
+        project.provisioning ? h('div', { className: 'sat-co-proj-kv' },
+          '⚠ ' + t('provision') + '：' + (project.provisioning.workspace || project.provisioning.session || '')) : null,
+        project.deliverable ? h('div', { className: 'sat-co-proj-kv' },
+          h('b', null, t('deliverableLabel')), '：' + project.deliverable) : null,
+        project.ceaReview ? h('div', { className: 'sat-co-proj-kv' },
+          h('b', null, t('ceaReview')), '：' + project.ceaReview) : null,
+        project.chairmanDecision ? h('div', { className: 'sat-co-proj-kv' },
+          h('b', null, t('chairmanDecision')), '：' + project.chairmanDecision) : null,
+        (project.positionIds || []).length
+          ? h('div', { className: 'sat-co-proj-kv' },
+              h('b', null, t('projectPositions')), '：' + (project.positionIds || [])
+                .map((id) => (positions.find((p) => p.id === id) || {}).name || id).join(' / '))
+          : null,
+      ]);
+    }
+
+    /** Global company overview: projects and decisions first, org second. */
     function CompanyPanel({ useSessions }) {
       const ctx = CONTEXT_REF.current;
       const t = translate || makeTranslator();
       const sessionId = useCompanyAnchor(useSessions);
       const company = useCompanyState(ctx, sessionId);
       const [draft, setDraft] = React.useState('');
+      const [filter, setFilter] = React.useState('all');
       const state = company.state || {};
+      const current = state._current || {};
       const decisions = (state.decisions || []).filter((d) => d.status === 'pending');
       const positions = state.positions || [];
       const pms = state.pms || [];
@@ -865,6 +1052,9 @@ window.__ModuleLoader__.load({
       const departments = state.departments || [];
       const inventory = state.inventory || { workspaces: [], sessions: [], byWorkspace: {} };
       const cea = state.company && state.company.cea;
+      const charter = (state.company && state.company.charter) || [];
+      const hq = (state.company && state.company.headquarters) || {};
+      const exportInfo = state.company && state.company.lastKnowledgeExport;
 
       const brief = () => {
         const text = draft.trim();
@@ -873,25 +1063,90 @@ window.__ModuleLoader__.load({
         company.run('/company brief ' + text);
       };
 
+      const counts = {
+        decisions: decisions.length,
+        running: projects.filter((p) => p.status === 'executing' || p.status === 'confirming').length,
+        accepting: projects.filter((p) => p.status === 'acceptance').length,
+        accepted: projects.filter((p) => p.chairmanDecision === 'accepted').length,
+      };
+
+      const FILTERS = [
+        { id: 'all', label: t('allProjects'), match: () => true },
+        { id: 'running', label: t('runningProjects'), match: (p) => p.status === 'executing' || p.status === 'confirming' },
+        { id: 'accepting', label: t('acceptingProjects'), match: (p) => p.status === 'acceptance' },
+        { id: 'accepted', label: t('acceptedProjects'), match: (p) => p.chairmanDecision === 'accepted' },
+      ];
+      const visibleProjects = projects.filter(FILTERS.find((f) => f.id === filter).match);
+
+      // ---- primary: what the Chairman came for ----
+      const head = h('div', { className: 'sat-co-head' }, [
+        h('div', { className: 'sat-co-title' }, (state.company && state.company.name) || t('companyTitle')),
+        h('div', { className: 'sat-co-sub' },
+          t('chairmanDesk') + ' · ' + (state.company && state.company.chairman ? state.company.chairman : '') +
+          ' · ' + (hq.bound ? t('hqLabel') + '：' + (hq.title || hq.workspaceId) : t('hqUnbound'))),
+        h('div', { className: 'sat-co-hero' }, [
+          h(Stat, { n: counts.decisions, label: t('myDecisions'), tone: 'warn' }),
+          h(Stat, { n: counts.running, label: t('runningProjects') }),
+          h(Stat, { n: counts.accepting, label: t('acceptingProjects'), tone: 'warn' }),
+          h(Stat, { n: counts.accepted, label: t('acceptedProjects'), tone: 'ok' }),
+        ]),
+        !hq.bound && current.workspaceId
+          ? h('button', { type: 'button', className: 'sat-btn', disabled: company.busy,
+              onClick: () => company.run('/company hq ' + current.workspaceId + ' | ' + (current.sessionId || '') + ' | 董事长办公室') },
+              t('hqBind'))
+          : null,
+      ]);
+
+      const decisionSection = h('div', { className: 'sat-co-primary' }, [
+        h('div', { className: 'sat-co-primary-h' }, [
+          t('myDecisions'), h('span', { className: 'sat-co-count' }, String(decisions.length))]),
+        decisions.length
+          ? h('div', { className: 'sat-co-grid' }, decisions.map((d) =>
+              h(DecisionCard, { key: d.id, decision: d, t, busy: company.busy, onDecide: company.run })))
+          : h('div', { className: 'sat-empty' }, t('noDecisions')),
+      ]);
+
+      const projectSection = h('div', { className: 'sat-co-primary' }, [
+        h('div', { className: 'sat-co-primary-h' }, [
+          t('myProjects'), h('span', { className: 'sat-co-count' }, String(projects.length))]),
+        h('div', { className: 'sat-co-tabs' }, FILTERS.map((f) =>
+          h('button', { type: 'button', key: f.id, className: 'sat-co-tab',
+            'data-on': filter === f.id ? '1' : '0', onClick: () => setFilter(f.id) }, f.label))),
+        visibleProjects.length
+          ? h('div', { className: 'sat-co-grid' }, visibleProjects.map((pr) =>
+              h(ProjectCard, { key: pr.id, project: pr, positions, t, onDecide: company.run })))
+          : h('div', { className: 'sat-empty' }, t('empty')),
+      ]);
+
+      const briefSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('brief'), h('span', { className: 'sat-co-count' }, 'CEA')]),
+        h('div', { className: 'sat-co-row' }, [
+          h('textarea', {
+            className: 'sat-co-textarea', value: draft, placeholder: t('briefPlaceholder'),
+            onChange: (e) => setDraft(e.target.value),
+            onKeyDown: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); brief(); } },
+          }),
+          h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: company.busy || !sessionId, onClick: brief }, t('brief')),
+        ]),
+        h('div', { className: 'sat-co-meta' }, t('briefHint')),
+      ]);
+
+      // ---- secondary: org / load / activity, collapsed by default ----
       const roleBox = (title, items) => h('div', { className: 'sat-co-role-box' }, [
         h('div', { className: 'sat-co-role-h' }, title),
       ].concat((items || []).map((item) =>
         h('div', { className: 'sat-co-role-li' },
           typeof item === 'string' ? item : h('span', null, h('b', null, (item.name || item.scope || '') + '：'), item.detail || item.limit || '')))));
 
-      const roleSection = cea ? h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, t('ceaRole')),
-        h('div', { className: 'sat-co-meta' }, t('identity') + '：' + (cea.identity || '')),
-        h('div', { className: 'sat-co-meta' }, t('mission') + '：' + (cea.mission || '')),
-        h('div', { className: 'sat-co-role' }, [
-          roleBox(t('capabilities'), cea.capabilities),
-          roleBox(t('requirements'), cea.requirements),
-          roleBox(t('habits'), cea.habits),
-          roleBox(t('authority'), cea.delegatedAuthority),
-          roleBox(t('forbidden'), cea.forbidden),
-          roleBox(t('acceptance'), [cea.acceptance]),
-        ]),
-      ]) : null;
+      const charterSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, t('charter')),
+        h('div', { className: 'sat-co-charter' }, charter.map((c) =>
+          h('div', { className: 'sat-co-card', key: c.id }, [
+            h('div', { className: 'sat-co-card-title' }, c.decision),
+            h('div', { className: 'sat-co-meta' }, t('decided') + ' · ' + c.decidedAt),
+            h('div', { className: 'sat-co-meta' }, c.rationale),
+          ]))),
+      ]);
 
       const deptSection = departments.length ? h('div', { className: 'sat-co-sect' }, [
         h('div', { className: 'sat-co-h' }, [t('departments'), h('span', { className: 'sat-co-count' }, String(departments.length))]),
@@ -913,72 +1168,44 @@ window.__ModuleLoader__.load({
           ]))),
       ]);
 
-      const head = h('div', { className: 'sat-co-head' }, [
-        h('div', { className: 'sat-co-title' }, (state.company && state.company.name) || t('companyTitle')),
-        h('div', { className: 'sat-co-sub' },
-          t('chairmanDesk') + ' · ' + (state.company && state.company.chairman ? state.company.chairman : '') + ' · ' + projects.length + ' ' + t('projects') + ' · ' + decisions.length + ' ' + t('decisions')),
-        h('div', { className: 'sat-co-cea' }, [
-          h('strong', null, t('ceaLabel')),
-          h('div', null, t('ceaNote')),
-        ]),
-      ]);
-
-      const briefSection = h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('brief'), h('span', { className: 'sat-co-count' }, 'CEA')]),
-        h('div', { className: 'sat-co-row' }, [
-          h('textarea', {
-            className: 'sat-co-textarea', value: draft, placeholder: t('briefPlaceholder'),
-            onChange: (e) => setDraft(e.target.value),
-            onKeyDown: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); brief(); } },
-          }),
-          h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: company.busy || !sessionId, onClick: brief }, t('brief')),
-        ]),
-        h('div', { className: 'sat-co-meta' }, t('briefHint')),
-      ]);
-
-      const decisionSection = h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('chairmanDesk'), h('span', { className: 'sat-co-count' }, String(decisions.length))]),
-        decisions.length
-          ? h('div', { className: 'sat-co-grid' }, decisions.map((d) =>
-              h(DecisionCard, { key: d.id, decision: d, t, busy: company.busy, onDecide: company.run })))
-          : h('div', { className: 'sat-empty' }, t('empty')),
-      ]);
-
-      const grouped = new Set();
-      for (const dept of departments) for (const id of (dept.positionIds || [])) grouped.add(id);
-      const ungrouped = positions.filter((p) => !grouped.has(p.id));
-      const orgSection = ungrouped.length ? h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('orgChart') + ' · ' + t('positions'), h('span', { className: 'sat-co-count' }, String(ungrouped.length))]),
-        h('div', { className: 'sat-co-grid' }, ungrouped.map((p) => h(PositionCard, { key: p.id, position: p, t }))),
-      ]) : null;
-
       const pmSection = h('div', { className: 'sat-co-sect' }, [
         h('div', { className: 'sat-co-h' }, [t('pms'), h('span', { className: 'sat-co-count' }, String(pms.length))]),
         h('div', { className: 'sat-co-grid' }, pms.map((pm) =>
           h('div', { className: 'sat-co-card', key: pm.id }, [
             h('div', { className: 'sat-co-card-title' }, pm.name),
-            h('div', { className: 'sat-co-meta' }, t('project') + ' ' + t('status') + ': ' + pm.class),
+            h('div', { className: 'sat-co-meta' }, pm.class),
             h('div', { className: 'sat-co-meta' }, (pm.knowledge || []).map((k) => '· ' + k.topic).join('  ')),
-            h('div', { className: 'sat-co-meta' }, (pm.projects || []).length + ' ' + t('projects')),
-          ]))),
-      ]);
-
-      const projectSection = h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('projects'), h('span', { className: 'sat-co-count' }, String(projects.length))]),
-        h('div', { className: 'sat-co-grid' }, projects.map((pr) =>
-          h('div', { className: 'sat-co-card', key: pr.id }, [
-            h('div', { className: 'sat-co-card-title' }, pr.title),
-            h('div', { className: 'sat-co-meta' }, t('status') + ': ' + pr.status + ' · PM: ' + (pr.pmId || '—')),
-            h('div', { className: 'sat-co-meta' }, t('goal') + ': ' + (pr.goal || '')),
-            pr.deliverable ? h('div', { className: 'sat-co-meta' }, t('deliverableLabel') + ': ' + pr.deliverable) : null,
-            pr.chairmanDecision ? h('div', { className: 'sat-co-meta' }, t('chairmanDecision') + ': ' + pr.chairmanDecision) : null,
           ]))),
       ]);
 
       const eventSection = h('div', { className: 'sat-co-sect' }, [
-        h('div', { className: 'sat-co-h' }, [t('events'), h('button', { type: 'button', className: 'sat-btn', onClick: company.reload }, t('refresh'))]),
+        h('div', { className: 'sat-co-h' }, [t('events'),
+          h('button', { type: 'button', className: 'sat-btn', onClick: company.reload }, t('refresh')),
+          h('button', { type: 'button', className: 'sat-btn', disabled: company.busy,
+            onClick: () => company.run('/company export') }, t('knowledgeExport'))]),
+        exportInfo ? h('div', { className: 'sat-co-meta' }, t('exported') + '：' + exportInfo.file) : null,
         events.slice(0, 12).map((e, i) =>
           h('div', { className: 'sat-co-ev', key: i }, e.at + ' · ' + e.text)),
+      ]);
+
+      const roleSection = cea ? h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, t('ceaRole')),
+        h('div', { className: 'sat-co-meta' }, t('identity') + '：' + (cea.identity || '')),
+        h('div', { className: 'sat-co-meta' }, t('mission') + '：' + (cea.mission || '')),
+        h('div', { className: 'sat-co-role' }, [
+          roleBox(t('capabilities'), cea.capabilities),
+          roleBox(t('requirements'), cea.requirements),
+          roleBox(t('habits'), cea.habits),
+          roleBox(t('authority'), cea.delegatedAuthority),
+          roleBox(t('forbidden'), cea.forbidden),
+          roleBox(t('acceptance'), [cea.acceptance]),
+        ]),
+      ]) : null;
+
+      const secondary = h('div', { className: 'sat-co-secondary' }, [
+        h(Fold, { title: t('orgSecondary') }, [
+          charterSection, deptSection, roleSection, pmSection, inventorySection, eventSection,
+        ]),
       ]);
 
       const notices = [
@@ -987,8 +1214,7 @@ window.__ModuleLoader__.load({
       ];
 
       const body = h('div', { className: 'sat-co-body' }, notices.concat([
-        briefSection, decisionSection, roleSection, deptSection, orgSection,
-        pmSection, projectSection, inventorySection, eventSection,
+        decisionSection, projectSection, briefSection, secondary,
       ]));
 
       return h('div', { className: 'sat-co' }, [h('style', null, css), head, body]);

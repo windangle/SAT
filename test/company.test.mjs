@@ -33,6 +33,7 @@ function makeWorld() {
   const commands = {};
   const tools = {};
   const leadAgent = { id: 'agent-lead', session: { id: 'agent-lead' } };
+  const world = { knowledge: null };
 
   const storage = {
     backend: {
@@ -103,7 +104,16 @@ function makeWorld() {
       }
       if (name === 'sessionController') return undefined;
       if (name === 'approval') return undefined;
-      if (name === 'fs') return { resolve: async () => ({}), readText: async () => '' };
+      if (name === 'fs') {
+        return {
+          resolve: async (path) => ({ path }),
+          readText: async () => '',
+          writeText: async (target, content, _expected, _signal, policy) => {
+            world.knowledge = { path: target.path, content, policy };
+            return {};
+          },
+        };
+      }
       if (name === 'workingDirectory') return { get: () => '/workspace', defaultDirectory: '/workspace' };
       if (name === 'commands') return ctx.commands;
       throw new Error(`cannot get property "${name}" without inject`);
@@ -115,7 +125,7 @@ function makeWorld() {
   };
   leadAgent.ctx = { systemPrompt: ctx.systemPrompt, tools: ctx.tools };
 
-  return { ctx, records, commands, tools, agent: leadAgent };
+  return { ctx, records, commands, tools, agent: leadAgent, get knowledge() { return world.knowledge; } };
 }
 
 async function run(world, line) {
@@ -315,6 +325,67 @@ console.log('CEA confirms the project (=workspace) and task (=session) before di
   check('the chairman can bind real workspace/session ids',
     boundProject.workspaceId === 'ws-99' && boundProject.sessionId === 'session-99');
   check('binding clears the pending provisioning', !boundProject.provisioning);
+}
+
+console.log('the three architecture decisions are settled');
+{
+  const world = makeWorld();
+  apply(world.ctx, Config['~standard'].validate({}).value);
+  const org = await state(world);
+  check('the operating model is A', org.company.model === 'A');
+  check('all three decisions are locked in the charter',
+    org.company.charter.length === 3 && org.company.charter.every((c) => c.status === 'locked' && c.rationale));
+  check('model B is explicitly deferred, not improvised',
+    org.company.charter.some((c) => c.id === 'charter-model' && c.rationale.includes('模型 B')));
+  check('CEA HQ is a dedicated workspace+session',
+    org.company.charter.some((c) => c.id === 'charter-hq' && c.decision.includes('总部')));
+  check('knowledge policy keeps both KV and plain text',
+    Boolean(org.company.knowledgePolicy?.structure && org.company.knowledgePolicy?.prose));
+
+  // HQ binding
+  await run(world, 'hq ws-hq | session-hq | 董事长办公室');
+  const bound = await state(world);
+  check('the chairman can bind the CEA HQ',
+    bound.company.headquarters.bound && bound.company.headquarters.workspaceId === 'ws-hq');
+  check('binding HQ is audited', bound.events.some((e) => e.kind === 'governance'));
+
+  // Knowledge export
+  const exported = await run(world, 'export');
+  check('export reports a file', /\.agent-company\.md/.test(exported.text), exported.text);
+  check('plain-text knowledge was written', Boolean(world.knowledge));
+  check('export writes inside the target workspace, no escalation',
+    world.knowledge?.policy?.mode === 'workspace-write' &&
+    world.knowledge?.policy?.workspaceRoot === '/ws/dsh' &&
+    world.knowledge?.path === '/ws/dsh/.agent-company.md',
+    JSON.stringify(world.knowledge?.policy));
+  const text = world.knowledge?.content || '';
+  check('plain text carries PM business knowledge', text.includes('PM 业务知识') && text.includes('DSH 插件产物'));
+  check('plain text carries project memory', text.includes('项目一览') && text.includes('DSH 插件体系'));
+  check('plain text carries position capability ledgers', text.includes('岗位能力档案') && text.includes('Cordis 插件架构'));
+  check('plain text carries the settled charter', text.includes('治理章程') && text.includes('单 CEA 总部会话'));
+  const after = await state(world);
+  check('export is recorded on the company', Boolean(after.company.lastKnowledgeExport?.file));
+  check('export is audited', after.events.some((e) => e.kind === 'knowledge'));
+}
+
+console.log('the charter survives a reload and back-fills older state');
+{
+  const world = makeWorld();
+  apply(world.ctx, Config['~standard'].validate({}).value);
+  const legacy = await state(world);
+  delete legacy.company.charter;
+  delete legacy.company.headquarters;
+  delete legacy.company.model;
+  delete legacy.departments;
+  world.records.org.main = legacy;
+
+  const second = makeWorld();
+  second.records.org.main = { ...world.records.org.main };
+  apply(second.ctx, Config['~standard'].validate({}).value);
+  const migrated = await state(second);
+  check('an older state gets the charter back-filled', migrated.company.charter.length === 3);
+  check('an older state gets departments back-filled', migrated.departments.length >= 4);
+  check('back-fill does not lose existing projects', migrated.projects.length === 2);
 }
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');

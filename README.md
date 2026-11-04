@@ -140,6 +140,8 @@ team_plan({
 ### 7. Agent 公司层（组织治理）
 
 > 侧栏入口叫 **「Agent公司」**（在工作区列表上方），不是「公司」。
+>
+> **面板首屏信息架构**（按董事长反馈重排）：四个数字概览 → **需要我决策** → **我的项目**（可筛选，卡片含目标/状态/PM/进展/工单/成果/CEA 终审/董事长验收/项目任务定位）→ 给 CEA 派任务。组织结构、工作负载、CEA 岗位说明书、治理章程、PM 知识、台账、审计流水全部**默认折叠在一个次要区**，一键展开。
 
 上面 1~6 是**执行层**（一个会话里的团队）。公司层是压在上面的**组织层**——管的是「一家公司」而不是「一堆活」：
 
@@ -165,6 +167,8 @@ team_plan({
 /company route <决策> | <工作区|新:名称> | <会话|新:标题>   # 董事长改选项目/任务
 /company bind <项目> | <workspaceId> | <sessionId>          # 董事长绑定真实工作区/会话 id
 /company inventory                         # 列出真实工作区与会话
+/company hq <workspaceId> | <sessionId>      # 绑定 CEA 总部会话（面板也有「把当前会话设为董事长办公室」按钮）
+/company export                             # 导出业务知识/项目记忆/岗位能力到工作区 .agent-company.md
 /company position <岗位> | <JD>              # CEA 起草 JD，等你批准才新增岗位
 /company dispatch <项目> | <岗位> | <活>      # 派到岗位（不是个人）
 /company deliver <项目> | <成果> | [自审]     # CEA 终审后提交你验收
@@ -175,6 +179,8 @@ team_plan({
 
 给模型的 CEA 侧工具：`company_status` / `company_brief`（可带 `project` / `task_title` 提示）/ `company_position_design` / `company_dispatch` / `company_deliver`（**没有** approve / reject / route / bind——这些是人的）。
 
+> **三条架构决策已按董事长拍板落地**：① 运行模型 **A**（单 CEA 总部会话，模型 B 后续演进）；② CEA 有独立 **「董事长办公室」工作区+会话**（`company.headquarters`）；③ 知识 **KV 存结构 + 工作区纯文本存知识，两者都留**（`/company export`）。三条写进 `COMPANY_CHARTER`（locked，带依据与日期），旧状态读取时自动补齐。
+>
 > 当前是**纵切 Demo**：组织结构、决策闭环、两级视图、落盘都已跑通并真机验过。Leader 真的自动 spawn 临时员工、PM 自动写知识、跨工作区联邦执行（模型 B）是下一步 —— 落点与契约见 [AgentCompany-方案.md](../AgentCompany-方案.md)。
 
 ### 8. 配置与持久化
@@ -300,17 +306,19 @@ node test/contract.test.mjs    # Host 任务状态机契约测试（闸门 + 工
 node test/render.test.mjs      # 面板渲染路径的离线测试
 node test/render-ui.test.mjs   # 「最近完成」区块与条件轮询（含可控假时钟）
 node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇总 / 审批 / 团队模板
-node test/company.test.mjs      # Agent 公司层：组织、JD 审批、派工、交付验收、重载恢复
+node test/company.test.mjs      # Agent 公司层：组织、CEA 角色、章程、项目定位、派工、验收、知识导出
+node test/company-panel.test.mjs  # 面板首屏顺序：项目与决策在前、组织介绍折叠在后
 ```
 
-共 **247 项断言**，全部通过。
+共 **286 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
 - **`host.test.mjs`** 覆盖纯函数：技能词的词边界匹配、队友点名的整词规则、工作包标记的格式与往返、`dispatchKey` 的身份语义。
 - **`features.test.mjs`** 覆盖这一轮新增的能力：Config schema 的校验与默认值、流水落盘与读回、失败 / 闲置 owner 的回收、完成记录的去重、审批通道与团队模板。它的假存储后端**复刻了真实约束**（一个 unit 只能有一个 live handle、key 必须 path-safe），所以能抓住「写不下去却静默成功」这类问题。
 - **`render-ui.test.mjs`** 用可控假时钟验证轮询节奏：打开立刻拉、安静时 8 秒、退避到 30 秒、有待批闸门时保持 8 秒、看板一变立刻察觉。
-- **`company.test.mjs`** 用假 Host（复刻 KV 的 one-live-handle 约束 + 命令/工具注册表 + 真实工作区/会话服务）跑真实插件代码：组织架构与部门归组、CEA 角色结构、待招标记、CEA 工具存在而董事长拍板工具**不存在**、立案→确认→执行、项目/任务定位与董事长改选路由、批准后才落地、新建工作区不擅自建目录、bind 绑定、JD 批准后才建岗（待招就地转正不重复）、派到岗位、驳回不算完成、董事长验收才算完成、重载后组织状态还在。
+- **`company.test.mjs`** 用假 Host（复刻 KV 的 one-live-handle 约束 + 命令/工具注册表 + 真实工作区/会话服务）跑真实插件代码：组织架构与部门归组、CEA 角色结构、待招标记、**治理章程三条已锁定**、HQ 绑定、纯文本知识导出（含「不提权」断言）、旧状态自动补齐、CEA 工具存在而董事长拍板工具**不存在**、立案→确认→执行、项目/任务定位与董事长改选路由、批准后才落地、新建工作区不擅自建目录、bind 绑定、JD 批准后才建岗（待招就地转正不重复）、派到岗位、驳回不算完成、董事长验收才算完成、重载后组织状态还在。
+- **`company-panel.test.mjs`** 用离线 React 桩渲染真实的「Agent公司」全局面板，断言**信息架构**：决策在项目之前、项目在派任务之前、项目状态/工单/定位可见、CEA 岗位说明书与部门/章程**不在首屏**、且只有一个折叠区。这条测试直接对应「面板不该读成公司介绍」这条反馈。
 
 ---
 

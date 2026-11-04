@@ -600,6 +600,7 @@ function ceaPersona(role) {
     ``,
     `ACCEPTANCE: ${role.acceptance}`,
     ``,
+    `SETTLED GOVERNANCE (decided by the Chairman, do not re-litigate): (1) Operating model A — a single CEA headquarters session; the Chairman hands tasks only there and you do intake/confirmation/dispatch/review/delivery. Cross-workspace federation (model B) is a later evolution, do not improvise it. (2) The CEA has a dedicated '董事长办公室' workspace+session as HQ (/company hq binds the real ids). (3) Structure lives in ctx.storage KV; business knowledge / project memory / position capabilities are ALSO mirrored to a human-readable plain-text file in the workspace (/company export).`,
     `ORGANISATION: A workspace is one project; a session is one task. Before any dispatch you must confirm which project and which task, and whether to create new ones or route into existing ones (company_brief raises that confirmation).`,
     `Use company_status to read the org. Dispatch work to POSITIONS, not individuals (company_dispatch). Each position has a durable Leader who works directly when load is low and hires temporary sub-agents when load is high; the Leader alone identifies and accumulates position skills/capabilities. PMs own business knowledge for one class of projects and the memory of each project.`,
     `Design a new position's JD when a task needs a capability no active position has (company_position_design) — the Chairman must approve the JD before the position becomes active.`,
@@ -1900,7 +1901,7 @@ export function apply(ctx, config = {}) {
     commandCtx.commands.register({
     name: 'company',
     description: 'Agent 公司控制面：董事长只与 CEA 对接；CEA 立案/设计岗位/派工/交付，董事长确认需求、批 JD、验收成果。',
-    input: { hint: '<state | brief <任务> | route <决策> | <工作区|新:名称> | <会话|新:标题> | bind <项目> | <wsId> | <sessionId> | inventory | position | dispatch | deliver | approve | reject | reset>' },
+    input: { hint: '<state | brief | route | bind | hq <wsId> | <sessionId> | export | inventory | position | dispatch | deliver | approve | reject | reset>' },
     handler: async ({ agent, rawInput, signal }) => {
       const line = String(rawInput ?? '').trim()
       try {
@@ -2071,6 +2072,28 @@ export function apply(ctx, config = {}) {
   const COMPANY_UNIT = 'super_agent_company'
   const COMPANY_TABLES = ['org']
 
+  /** The three architecture decisions, settled by the Chairman (locked). */
+  const COMPANY_CHARTER = [
+    {
+      id: 'charter-model', question: '运行模型 A 还是 B',
+      decision: 'A · 单 CEA 总部会话',
+      rationale: '先 A 跑通组织与闭环，再往 B（跨工作区联邦执行）演进。模型 B 需要 Host 驱动多个会话、处理冷恢复，DSH 没有现成跨会话派单通道。',
+      status: 'locked', decidedAt: '2026-11-04',
+    },
+    {
+      id: 'charter-hq', question: 'CEA 是不是独立总部会话',
+      decision: '是 · 建「董事长办公室」工作区与会话作为 CEA 总部',
+      rationale: '董事长只在总部下任务，CEA 统一立案、确认、派工、终审、交付。/company hq 绑定真实 workspaceId/sessionId；未绑定时以当前会话为总部。',
+      status: 'locked', decidedAt: '2026-11-04',
+    },
+    {
+      id: 'charter-knowledge', question: '岗位与 PM 的知识写在哪',
+      decision: 'KV 存结构 + 工作区纯文本存知识，两者都留',
+      rationale: 'ctx.storage KV 存组织状态（可查询、可审计）；工作区 .agent-company.md 纯文本存业务知识/项目记忆/岗位能力（人可读、可 git、Open Company 味道）。/company export 导出。',
+      status: 'locked', decidedAt: '2026-11-04',
+    },
+  ]
+
   /** A readable starting org so the company panel is meaningful immediately. */
   function seedCompany() {
     return {
@@ -2079,6 +2102,14 @@ export function apply(ctx, config = {}) {
         name: 'Agent公司',
         chairman: '董事长（你）',
         cea: CEA_ROLE,
+        model: 'A',
+        modelNote: '单 CEA 总部会话：董事长只在「董事长办公室」下任务，CEA 统一立案/确认/派工/终审/交付。',
+        headquarters: { workspaceId: '', sessionId: '', title: '', bound: false },
+        charter: COMPANY_CHARTER,
+        knowledgePolicy: {
+          structure: 'ctx.storage KV · super_agent_company',
+          prose: '工作区 .agent-company.md 纯文本（人可读、可 git）',
+        },
       },
       departments: PRESET_ORG.departments,
       positions: PRESET_ORG.positions,
@@ -2164,7 +2195,17 @@ export function apply(ctx, config = {}) {
     return await enqueueCompany(() => withCompanyStore(async (unit) => {
       const { tables } = await unit.loadAll()
       const record = tables?.org?.main
-      if (record && record.version === 1) return record.value ?? record
+      if (record && record.version === 1) {
+        const stored = record.value ?? record
+        // Older states predate the charter/HQ. Fill the gaps in place so an
+        // existing company keeps its projects and decisions.
+        const fresh = seedCompany()
+        stored.company = { ...fresh.company, ...(stored.company || {}) }
+        if (!Array.isArray(stored.company.charter)) stored.company.charter = COMPANY_CHARTER
+        if (!stored.company.headquarters) stored.company.headquarters = fresh.company.headquarters
+        if (!Array.isArray(stored.departments)) stored.departments = PRESET_ORG.departments
+        return stored
+      }
       const seeded = seedCompany()
       await unit.putRecord('org', 'main', seeded)
       return seeded
@@ -2494,6 +2535,7 @@ export function apply(ctx, config = {}) {
       sessionId: sessionId ?? null,
       workspaceId: match ? (match.id ?? match.workspaceId ?? '') : '',
       workspaceTitle: match ? (match.title ?? '') : '',
+      workspacePath: match ? (match.path ?? '') : '',
     }
   }
 
@@ -2501,6 +2543,88 @@ export function apply(ctx, config = {}) {
   async function companySnapshot(sessionId) {
     const state = await readCompany()
     return { ...state, _current: companyCurrent(sessionId), inventory: companyInventory() }
+  }
+
+  /** Resolve where plain-text knowledge should be written. */
+  function companyKnowledgeRoot(sessionId) {
+    const current = companyCurrent(sessionId)
+    if (current.workspacePath) return current.workspacePath
+    const registry = optionalService('workspaceRegistry')
+    const first = (registry?.list?.() ?? [])[0]
+    return first?.path ?? ''
+  }
+
+  /**
+   * Export business knowledge / project memory / position capabilities into
+   * one readable Markdown file in the workspace. KV remains the structured
+   * truth; this is the human-readable, git-able companion.
+   */
+  async function companyExportKnowledge(sessionId) {
+    const state = await readCompany()
+    const root = companyKnowledgeRoot(sessionId)
+    if (!root) throw new Error('没有可用的工作区目录，无法导出纯文本知识。')
+    const fs = optionalService('fs')
+    if (!fs?.resolve || !fs?.writeText) throw new Error('该部署没有可用的文件系统服务，无法导出纯文本知识。')
+
+    const lines = [
+      `# ${state.company.name} · 组织与知识`,
+      '',
+      `> KV 存结构（${state.company.knowledgePolicy?.structure || ''}），本文件存知识（${state.company.knowledgePolicy?.prose || ''}）。`,
+      `> 由 /company export 生成于 ${companyStamp()}；董事长已拍板的三条架构决策见「治理章程」。`,
+      '',
+      '## 治理章程（已锁定）',
+      '',
+    ]
+    for (const c of state.company.charter || []) {
+      lines.push(`- **${c.question}** → ${c.decision}`)
+      lines.push(`  - 依据：${c.rationale}`)
+    }
+    lines.push('', '## 岗位能力档案', '')
+    for (const p of state.positions) {
+      lines.push(`### ${p.name}（${p.status === 'planned' ? '待招' : '在编'}）`)
+      lines.push(`- 使命：${p.jd?.mission || ''}`)
+      lines.push(`- 技能：${(p.jd?.skills || []).join(' / ')}`)
+      lines.push(`- 边界：${(p.jd?.boundaries || []).join(' / ')}`)
+      lines.push(`- 验收：${p.jd?.acceptance || ''}`)
+      const caps = p.leader?.capabilities || []
+      lines.push(`- Leader：${p.leader?.name || ''}；已积累 ${caps.length} 条能力`)
+      for (const c of caps) lines.push(`  - ${c.skill} — ${c.evidence}（${c.at}）`)
+      lines.push('')
+    }
+    lines.push('## PM 业务知识与项目记忆', '')
+    for (const pm of state.pms) {
+      lines.push(`### ${pm.name}（${pm.class}）`)
+      for (const k of pm.knowledge || []) lines.push(`- **${k.topic}**：${k.summary}（${k.at}）`)
+      lines.push('')
+      for (const projectId of pm.projects || []) {
+        const project = state.projects.find((p) => p.id === projectId)
+        if (!project) continue
+        lines.push(`#### 项目记忆：${project.title}`)
+        lines.push(`- 目标：${project.goal || ''}`)
+        lines.push(`- 状态：${project.status}；董事长验收：${project.chairmanDecision || '未决'}`)
+        lines.push(`- 成果：${project.deliverable || '（尚未提交）'}`)
+        lines.push(`- CEA 终审：${project.ceaReview || '（尚未提交）'}`)
+        lines.push(`- 工单：${(project.workItems || []).join(' / ') || '（无）'}`)
+        lines.push('')
+      }
+    }
+    lines.push('## 项目一览', '')
+    for (const project of state.projects) {
+      lines.push(`- **${project.title}** [${project.status}] · PM ${project.pmId || '—'} · 工作区 ${project.workspaceId || '（未绑定）'} / 会话 ${project.sessionId || '（未绑定）'}`)
+    }
+    lines.push('')
+
+    const file = `${root.replace(/\/$/, '')}/.agent-company.md`
+    const target = await fs.resolve(file, { cwd: root })
+    // The default sandbox policy is derived from the *calling* session's cwd,
+    // which need not be the workspace we are exporting into. Pass an explicit
+    // workspace-write policy rooted at the target workspace — no escalation.
+    const policy = { mode: 'workspace-write', workspaceRoot: root }
+    await fs.writeText(target, lines.join('\n'), undefined, undefined, policy)
+    state.company.lastKnowledgeExport = { at: companyStamp(), file }
+    companyEvent(state, 'knowledge', `已导出纯文本知识：${file}`, {})
+    await writeCompany(state)
+    return { file, sections: state.positions.length + state.pms.length + state.projects.length }
   }
 
   /** Handle one `/company` command line. Shared by the composer and the panel. */
@@ -2565,6 +2689,37 @@ export function apply(ctx, config = {}) {
       }
       case 'inventory': {
         return { kind: 'success', text: JSON.stringify(companyInventory()) }
+      }
+      case 'hq': {
+        const state = await readCompany()
+        if (parts.length < 2) {
+          const hq = state.company.headquarters || {}
+          return { kind: 'success', text: hq.bound
+            ? `董事长办公室：工作区 ${hq.workspaceId} / 会话 ${hq.sessionId}${hq.title ? '（' + hq.title + '）' : ''}`
+            : '尚未绑定总部会话；当前会话代行 CEA。用 /company hq <workspaceId> | <sessionId> 绑定。' }
+        }
+        state.company.headquarters = {
+          workspaceId: parts[0], sessionId: parts[1], title: parts[2] || '董事长办公室', bound: true,
+        }
+        companyEvent(state, 'governance', `董事长办公室已绑定：工作区 ${parts[0]} / 会话 ${parts[1]}`, {})
+        await writeCompany(state)
+        return { kind: 'success', text: `董事长办公室已绑定：${parts[0]} / ${parts[1]}。` }
+      }
+      case 'export': {
+        try {
+          const r = await companyExportKnowledge(sessionId)
+          const st = await readCompany()
+          st.company.lastKnowledgeError = null
+          await writeCompany(st)
+          return { kind: 'success', text: `已导出纯文本知识到 ${r.file}（${r.sections} 个条目）。` }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          const st = await readCompany()
+          st.company.lastKnowledgeError = message
+          companyEvent(st, 'knowledge', `导出纯文本知识失败：${message}`, {})
+          await writeCompany(st)
+          return { kind: 'error', text: message }
+        }
       }
       case 'approve':
       case 'reject': {
