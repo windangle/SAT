@@ -255,7 +255,12 @@ console.log('the approval seam');
   check('the gate is raised through the approval seam', world.approvals.length === 1, JSON.stringify(world.approvals));
   check('the approval request names the tool', world.approvals[0]?.toolName === 'team_gate_request', JSON.stringify(world.approvals[0]));
   check('the approval request carries a localized reason', Boolean(world.approvals[0]?.displayReason?.zh));
-  check('an allowed gate is settled as approved', gate.status === 'approved', JSON.stringify(gate));
+  check('raising a gate does not block on the approval card', gate.status === 'pending', JSON.stringify(gate));
+  // the card settles the same gate asynchronously; the panel button is a
+  // second path to the very same Work Item
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  check('an allowed gate is settled as approved',
+    world.agentTeams.listTasks().find((t) => t.subject.includes('合并插件'))?.status === 'completed');
   check('the settled gate is completed on the board',
     world.agentTeams.listTasks().find((t) => t.subject.includes('合并插件'))?.status === 'completed');
 }

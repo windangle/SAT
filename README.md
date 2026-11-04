@@ -104,7 +104,7 @@ team_plan({
 - **只有人能批**：`/super-team approve <id>` 与面板按钮直接调用任务服务，**不经过工具管线**，因此不被守卫拦截。
 - **批准与否都是终态**：批准 = 完成；否决 = 完成 + 主题标 `REJECTED`——人说了「不」，工单该被重新规划，而不是永远等下去。
 - 判定结论**持久化在工单上**，插件重载 / HMR 后闸门区块、按钮与结论都还在。
-- **审批卡片**：举闸门时 `team_gate_request` 会同时走 `ctx.approval` 向人弹一张审批卡（对话里、手机上都能批）；批了就当场落定，没人应答 / 取消时闸门保持 `pending`，面板仍能批。「没人能问」绝不读成「已批准」。
+- **审批卡片**：举闸门时 `team_gate_request` 会同时走 `ctx.approval` 向人弹一张审批卡（对话里、手机上都能批）。**它不阻塞举闸的 turn**——卡片回答到达后异步去结算看板上同一张闸门；面板的「批准 / 否决」按钮是通向同一张工单的第二条路，谁先到谁生效，晚到的那个是安全的空操作。没人应答 / 取消时闸门保持 `pending`，「没人能问」绝不读成「已批准」。开关 `approvalGates`。
 
 ### 5. 看门狗（Watchdog）
 
@@ -262,7 +262,7 @@ node test/render-ui.test.mjs   # 「最近完成」区块与条件轮询（含�
 node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇总 / 审批 / 团队模板
 ```
 
-共 **191 项断言**，全部通过。
+共 **192 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。

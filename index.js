@@ -607,7 +607,7 @@ export function apply(ctx, config = {}) {
    */
   async function askApproval(agent, kind, subject, detail, signal) {
     if (!settings.approvalGates) return 'pending'
-    const approval = optionalService('approval')
+    const approval = approvalContext?.approval ?? optionalService('approval')
     if (!approval) return 'pending'
     try {
       const outcome = await approval.request({
@@ -806,13 +806,24 @@ export function apply(ctx, config = {}) {
       reason: `hard gate "${kind}" raised and waiting for a human decision`,
       taskId: task.id,
     })
-    // The gate is on the board. Now ask the human through the approval
-    // seam, so the decision can land in the conversation (and on a phone).
-    const verdict = await askApproval(agent, kind, subject, request.detail ?? '', signal)
-    if (verdict !== 'pending') {
-      await decideGate(agent, task.id, verdict === 'approved' ? 'approve' : 'reject')
-    }
-    return { gateId: task.id, kind, subject, status: verdict }
+    // The gate is on the board. Ask the human through the approval seam too,
+    // so the decision can land in the conversation (and on a phone) without
+    // opening the panel — but do NOT await it here. Awaiting would hold the
+    // Lead's turn open until somebody clicks the card, and if the human
+    // instead used the panel's button the tool would hang forever. Both
+    // channels settle the very same gate on the board; whoever gets there
+    // first wins, and a late answer is a harmless no-op.
+    void askApproval(agent, kind, subject, request.detail ?? '', new AbortController().signal)
+      .then(async (verdict) => {
+        if (verdict === 'pending') return
+        try {
+          await decideGate(agent, task.id, verdict === 'approved' ? 'approve' : 'reject')
+        } catch {
+          /* already settled from the panel, or the team has gone away */
+        }
+      })
+      .catch(() => {})
+    return { gateId: task.id, kind, subject, status: 'pending' }
   }
 
   /**
@@ -1185,6 +1196,7 @@ export function apply(ctx, config = {}) {
       alerts: board.alerts,
       completions: board.completions ?? [],
       persistence: await persistenceStatus(),
+      approvalChannel: approvalContext?.approval ? 'available' : 'absent',
       availableCommands: commandCatalog(agent),
     }
   }
@@ -1213,6 +1225,12 @@ export function apply(ctx, config = {}) {
   let ledgerSequence = 0
   /** The Teams whose durable ledger has already been read back. */
   const restored = new Set()
+  /** The context that carries the optional approval service. */
+  let approvalContext
+  // `ctx.get()` throws for a service the context does not declare. A soft
+  // inject gives us a child context that does declare `approval`, without
+  // making it a hard dependency of the whole plugin.
+  ctx.inject(['approval'], (injected) => { approvalContext = injected })
 
   /** Run one storage operation, opening and closing the unit around it. */
   function enqueueStorage(task) {
