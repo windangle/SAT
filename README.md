@@ -137,7 +137,35 @@ team_plan({
 
 面板**写入** Host 的唯一通道是 `ctx.remote.commands.execute` → `/super-team`；**读取**以 Host 快照为主、Session 的 `agentTeam` 投影作兜底（字段名不同，兜底时做映射）。
 
-### 7. 配置与持久化
+### 7. Agent 公司层（组织治理）
+
+上面 1~6 是**执行层**（一个会话里的团队）。公司层是压在上面的**组织层**——管的是「一家公司」而不是「一堆活」：
+
+- **董事长（人）** 只对接 **CEA 首席执行 Agent**（唯一 Router）。CEA 理解并确认需求、设计岗位 JD、按任务派到岗位、对最终产出审核负责，再交付董事长验收。
+- **岗位（一类）**：有 JD、职责边界、验收标准；状态 `proposed / active`。每个岗位有一个 **Leader**——活少自己干，活多临时招员工（`ctx.subagents.startActivation`）；Leader 与普通员工的差别是**识别并积累岗位技能 / 能力**。
+- **PM**：一个 PM 负责一类项目，沉淀该类**业务知识 / 经验**与**每个项目的情况记忆**。
+- **CEA 代拍板有边界**：白名单内的低风险决策可自决并记审计；**最终成果必须董事长审核通过才算完成**。模型工具集里没有 `approve` / `reject`——拍板走 `/company` 命令与面板，模型拿不到这条通路。
+- **组织状态是 profile 级**（`ctx.storage` 的 `super_agent_company` KV），因为 `agentTeams` 名册绑在单个 Lead 会话日志里，跨不了工作区。执行状态仍在会话级团队里 —— **组织状态与执行状态分离**。
+
+**公司总览**（侧栏「公司」入口，在工作区列表上方）：CEA 派任务框、董事长待办（需求确认 / 批准 JD / 验收成果）、组织架构（岗位 + Leader + 能力档案）、PM 与项目组合、公司动态。
+**项目视图**（每个会话的「项目视图」页）：按当前 `workspaceId` / 工作区标题过滤，只看这个项目的目标、工单、CEA 终审、董事长验收状态。
+
+```
+/company state                              # 整家公司的状态（JSON）
+/company brief <任务>                        # CEA 立案：复述理解，等你确认才派工
+/company position <岗位> | <JD>              # CEA 起草 JD，等你批准才新增岗位
+/company dispatch <项目> | <岗位> | <活>      # 派到岗位（不是个人）
+/company deliver <项目> | <成果> | [自审]     # CEA 终审后提交你验收
+/company approve <决策>                      # 董事长批准（模型没有这个工具）
+/company reject <决策> | [理由]              # 董事长驳回
+/company reset                              # 重置为演示组织架构
+```
+
+给模型的 CEA 侧工具：`company_status` / `company_brief` / `company_position_design` / `company_dispatch` / `company_deliver`（**没有** approve / reject）。
+
+> 当前是**纵切 Demo**：组织结构、决策闭环、两级视图、落盘都已跑通并真机验过。Leader 真的自动 spawn 临时员工、PM 自动写知识、跨工作区联邦执行（模型 B）是下一步 —— 落点与契约见 [AgentCompany-方案.md](../AgentCompany-方案.md)。
+
+### 8. 配置与持久化
 
 - **`Config`**：插件现在有真正的配置 schema（Loader 用 `Config['~standard'].validate` 校验，手写 Standard Schema，**不依赖 zod**）。可调项：`keywordThreshold`、`watchdogIntervalMs`、`stallAfterMs`、`autoReleaseStalled`、`approvalGates`、`persistLedger`、`ledgerLimit`。
 - **调度流水落盘**：路由决策与完成记录写进 `~/.dsh/storages/super_agent_team_ledger/` 下的可读 JSON，插件重载后自动读回。走的是 `ctx.storage` 的 KV 通道（普通 descriptor，不需要 schema 库）；每个操作**用完即关**，因为后端规定「一个 unit 同时只能有一个 live handle」。
@@ -204,7 +232,7 @@ plugin_manager({ action: "install_bundle",
 > `plugin_manager` 的每次调用都需要审批——只在该动作的结果会影响下一步时才调它。
 > 同一个路径重复安装会报 `already-installed`，先 `remove_bundle` 再装。
 
-### 给模型：五个工具
+### 给模型：执行层五个工具（另有公司层 `company_*`，见第 7 节）
 
 | 工具 | 用途 | 参数 |
 |---|---|---|
@@ -260,15 +288,17 @@ node test/contract.test.mjs    # Host 任务状态机契约测试（闸门 + 工
 node test/render.test.mjs      # 面板渲染路径的离线测试
 node test/render-ui.test.mjs   # 「最近完成」区块与条件轮询（含可控假时钟）
 node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇总 / 审批 / 团队模板
+node test/company.test.mjs      # Agent 公司层：组织、JD 审批、派工、交付验收、重载恢复
 ```
 
-共 **192 项断言**，全部通过。
+共 **226 项断言**，全部通过。
 
 - **`render.test.mjs`** 用一个迷你 React 渲染器加载**真实的 `client.js`**，喂给它一组贴近真实的固定夹具（Host 快照 + Session 投影），再断言渲染结果：页面里不出现字面量 `undefined`、已认领工单显示正确负责人、点「Dispatch」真的打到 `/super-team intake` 且带的是**真实 AbortSignal**、点「Allow」真的打到 `/super-team approve`。
 - **`contract.test.mjs`** 照抄 Host 的任务状态机规则做了一个假的 `agentTeams`，然后用**真实的插件代码**跑 `requestGate → decideGate(approve/reject)` 与 `team_plan → settlePackage` 全链路，并断言守卫、判定标记、工作包关联与三种完成策略（`all` / `any` / `manual`）。它打的是**模型真正调用的工具入口**（`registeredTools` 里的 `team_plan`），不只是命令。它是有牙的：把 `decideGate` 改回旧的「只 complete」写法，它立刻报 6 条失败；把 `all` 的判定改成 `done > 0` 报 2 条；把 `manual` 的 `awaiting-human` 改成自动结算报 3 条。
 - **`host.test.mjs`** 覆盖纯函数：技能词的词边界匹配、队友点名的整词规则、工作包标记的格式与往返、`dispatchKey` 的身份语义。
 - **`features.test.mjs`** 覆盖这一轮新增的能力：Config schema 的校验与默认值、流水落盘与读回、失败 / 闲置 owner 的回收、完成记录的去重、审批通道与团队模板。它的假存储后端**复刻了真实约束**（一个 unit 只能有一个 live handle、key 必须 path-safe），所以能抓住「写不下去却静默成功」这类问题。
 - **`render-ui.test.mjs`** 用可控假时钟验证轮询节奏：打开立刻拉、安静时 8 秒、退避到 30 秒、有待批闸门时保持 8 秒、看板一变立刻察觉。
+- **`company.test.mjs`** 用假 Host（复刻 KV 的 one-live-handle 约束 + 命令/工具注册表）跑真实插件代码：组织种子、CEA 工具存在而董事长拍板工具**不存在**、立案→确认→执行、JD 批准后才建岗、派到岗位、驳回不算完成、董事长验收才算完成、重载后组织状态还在。
 
 ---
 
@@ -282,6 +312,7 @@ node test/features.test.mjs    # Config / 持久化 / 停滞回收 / 完成汇�
 - 所有队友**共享同一个工作目录**（DSH Agent Teams 的既有约束），本插件未引入 worktree 隔离。
 - 面板轮询已改成条件触发（8 秒 / 30 秒退避），但**仍是轮询**，不是订阅——因为插件私有状态不是会话投影，「订阅」需要引入 zod schema，而本地 `link:` 安装的 bundle 解析不了裸依赖。
 - **完成记录与看板「已完成」列是同一批工单**：前者是时间线（谁、什么时候交的），后者是状态视图，两处并存是有意的。
+- **公司层是单 CEA 会话模型（模型 A）**：所有执行仍在总部会话的团队里，工作区是「项目视图」而非执行隔离边界；跨工作区联邦执行（模型 B）未做。详见 [AgentCompany-方案.md](../AgentCompany-方案.md) 第三章。
 
 ---
 

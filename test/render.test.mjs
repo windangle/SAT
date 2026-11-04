@@ -48,6 +48,7 @@ const React = { createElement, useState, useEffect, useMemo, useCallback, useRef
 /* --------------------------------------------------------- plugin loader -- */
 
 let registered = null;
+const registrations = new Map();
 let dictionaries = {};
 globalThis.window = {
   __ModuleLoader__: {
@@ -130,7 +131,14 @@ function makeContext(injected, withRemote = true) {
   const context = {
     slots: {
       inject(_key, callback) { callback(); return () => {}; },
-      register(options, component) { registered = { options, component }; return () => {}; },
+      register(options, component) {
+        // Several views register into conversation.view now; keep the Team
+        // view as the one under test, keyed by its slot id.
+        registrations.set(`${options.name}:${options.id ?? options.key ?? ''}`, component);
+        if (options.id === 'super-agent-team') registered = { options, component };
+        else if (!registered) registered = { options, component };
+        return () => {};
+      },
     },
     locale: {
       // A namespace has to exist before bind() — the real service throws

@@ -1349,6 +1349,17 @@ export function apply(ctx, config = {}) {
 
     try {
       register(scoped.systemPrompt.section({
+        name: 'super-agent-company:persona',
+        order: sectionOrder(scoped, 'TEAM_POLICY', 38),
+        text: `You are the CEA (Chief Executive Agent) of an Agent Company. The human is the Chairman and talks ONLY to you.
+Your duties: understand and CONFIRM the Chairman's requirement before dispatching (company_brief restates it and raises a requirement decision for the Chairman; never dispatch before confirmation).
+Design a new position's JD when a task needs a capability no active position has (company_position_design) — the Chairman must approve the JD before the position becomes active.
+Dispatch work to POSITIONS, not individuals (company_dispatch). Each position has a durable Leader who works directly when load is low and hires temporary sub-agents when load is high; the Leader alone identifies and accumulates position skills/capabilities. PMs own business knowledge for one class of projects and the memory of each project. Use company_status to see the org.
+You may decide routine/low-risk matters yourself (delegatedAuthority), but the FINAL deliverable must be submitted with company_deliver and approved by the Chairman — you cannot approve or reject decisions; there are no tools for that, by design.
+The existing super-agent-team tools (team_intake / team_plan / team_gate_request ...) remain the execution engine. The company layer is the organisation above it.`,
+      }))
+
+      register(scoped.systemPrompt.section({
         name: 'super-agent-team:policy',
         order: sectionOrder(scoped, 'TEAM_POLICY', 40),
         text: teamPolicy(),
@@ -1462,6 +1473,89 @@ export function apply(ctx, config = {}) {
           return { teamId: membership.id, scanned: true, alerts }
         },
       }))
+      register(scoped.tools.register({
+        name: 'company_status',
+        description: 'Read the whole Agent Company: CEA, positions with JD and Leader capability ledgers, PMs with business knowledge, projects, chairman decisions and the company event ledger.',
+        parameters: { type: 'object', properties: {}, additionalProperties: false },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        execute() {
+          return readCompany()
+        },
+      }))
+
+      register(scoped.tools.register({
+        name: 'company_brief',
+        description: 'CEA 立案：复述董事长的任务理解，生成一条待董事长确认的需求决策。确认前不得派工。',
+        parameters: {
+          type: 'object',
+          properties: {
+            task: { type: 'string', description: 'The Chairman\'s task, strategic or very specific.' },
+          },
+          required: ['task'],
+          additionalProperties: false,
+        },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        execute(args) {
+          return companyBrief(args.task)
+        },
+      }))
+
+      register(scoped.tools.register({
+        name: 'company_position_design',
+        description: 'CEA 设计新岗位 JD，生成一条待董事长批准的岗位决策。',
+        parameters: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Position name.' },
+            jd: { type: 'string', description: 'Mission, responsibilities, skills, boundaries and acceptance criteria.' },
+          },
+          required: ['name', 'jd'],
+          additionalProperties: false,
+        },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        execute(args) {
+          return companyPosition(args.name, args.jd)
+        },
+      }))
+
+      register(scoped.tools.register({
+        name: 'company_dispatch',
+        description: 'CEA 派工到岗位（不是个人）。活少时岗位 Leader 直接干，活多时 Leader 招临时员工。',
+        parameters: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string' },
+            position_id: { type: 'string' },
+            work: { type: 'string' },
+          },
+          required: ['project_id', 'position_id', 'work'],
+          additionalProperties: false,
+        },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        execute(args) {
+          return companyDispatch(args.project_id, args.position_id, args.work)
+        },
+      }))
+
+      register(scoped.tools.register({
+        name: 'company_deliver',
+        description: 'CEA 对最终产出做终审并提交董事长验收。成果必须董事长审核通过才算完成；模型没有批准/驳回工具。',
+        parameters: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string' },
+            deliverable: { type: 'string', description: 'What is being delivered.' },
+            review: { type: 'string', description: 'CEA self-review against the requirement and acceptance criteria.' },
+          },
+          required: ['project_id', 'deliverable'],
+          additionalProperties: false,
+        },
+        output: { schema: OUTPUT_OBJECT, render: renderJson },
+        execute(args) {
+          return companyDeliver(args.project_id, args.deliverable, args.review || 'CEA 自审通过。')
+        },
+      }))
+
     } catch (error) {
       for (const dispose of disposers.reverse()) dispose()
       throw error
@@ -1523,6 +1617,22 @@ export function apply(ctx, config = {}) {
   // does not declare it, so reading `ctx.commands` there throws and the
   // command would never be registered.
   ctx.inject(['commands'], (commandCtx) => {
+    commandCtx.commands.register({
+    name: 'company',
+    description: 'Agent 公司控制面：董事长只与 CEA 对接；CEA 立案/设计岗位/派工/交付，董事长确认需求、批 JD、验收成果。',
+    input: { hint: '<state | brief <任务> | position <岗位> | <JD> | dispatch <项目> | <岗位> | <活> | deliver <项目> | <成果> | approve <决策> | reject <决策> | reset>' },
+    handler: async ({ agent, rawInput, signal }) => {
+      const line = String(rawInput ?? '').trim()
+      try {
+        const result = await companyCommand(line, agent?.session?.id ?? agent?.id)
+        // 面板只需要 JSON 文本；命令本身把结果写回聊天区给人看。
+        return { kind: result.kind, text: result.text }
+      } catch (error) {
+        return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    })
+
     commandCtx.commands.register({
     name: 'super-team',
     description: 'SuperAgentTeam control surface: inspect the board, submit work to the Router, or settle a human hard gate.',
@@ -1668,6 +1778,338 @@ export function apply(ctx, config = {}) {
       }
     })()
   }, settings.watchdogIntervalMs), 'super-agent-team.watchdog()')
+
+  // ---------------------------------------------------------------- 公司层 --
+
+  /**
+   * The company is a *profile-wide* organisation, not a session-scoped team.
+   * `ctx.agentTeams` rosters live in one Lead session's log, so the org chart,
+   * JDs, position capabilities, PM knowledge, projects, and chairman
+   * decisions live here in the profile-wide `ctx.storage` KV instead.
+   * The execution layer (work items, gates, ledger) stays in super-agent-team.
+   */
+  const COMPANY_UNIT = 'super_agent_company'
+  const COMPANY_TABLES = ['org']
+
+  /** A readable starting org so the company panel is meaningful immediately. */
+  function seedCompany() {
+    return {
+      version: 1,
+      company: {
+        name: 'SuperAgent 公司',
+        chairman: '董事长（你）',
+        cea: {
+          name: 'CEA',
+          title: '首席执行 Agent',
+          singlePointOfContact: '董事长只与 CEA 对接；CEA 理解并确认需求、设计岗位、派工、终审、交付验收。',
+          delegatedAuthority: ['routine_dispatch', 'low_risk_choice'],
+          reserved: '最终成果必须董事长审核通过才算完成',
+        },
+      },
+      positions: [
+        {
+          id: 'pos-eng', name: '研发工程师', status: 'active',
+          jd: { mission: '把需求变成可运行的代码', responsibilities: ['实现', '自测', '写变更说明'], skills: ['TypeScript', 'Cordis 插件', '测试'], boundaries: ['不擅自合并远端'], acceptance: '编译通过 + 自测通过' },
+          leader: { name: 'eng-lead', capabilities: [
+            { skill: 'Cordis 插件开发', evidence: '交付 super-agent-team 插件', at: '2026-11-03' },
+          ] },
+          headcount: 1, load: 0,
+        },
+        {
+          id: 'pos-qa', name: '测试工程师', status: 'active',
+          jd: { mission: '守住交付质量', responsibilities: ['用例', '回归', '真机验收'], skills: ['QA', '浏览器自动化'], boundaries: ['不代替人拍板'], acceptance: '用例与报告齐全' },
+          leader: { name: 'qa-lead', capabilities: [
+            { skill: '真机 GUI 验收', evidence: 'bsk 驱动的 Web GUI 验收', at: '2026-11-04' },
+          ] },
+          headcount: 1, load: 0,
+        },
+        {
+          id: 'pos-content', name: '内容/文档', status: 'active',
+          jd: { mission: '把事情讲清楚', responsibilities: ['方案', 'README', '汇报'], skills: ['中文写作', '结构化表达'], boundaries: ['不编造数据'], acceptance: '与实现一致' },
+          leader: { name: 'content-lead', capabilities: [
+            { skill: '架构文档', evidence: 'SuperAgentTeam-方案.md', at: '2026-11-04' },
+          ] },
+          headcount: 1, load: 0,
+        },
+      ],
+      pms: [
+        {
+          id: 'pm-tools', name: '工具类项目 PM', class: '工具类项目',
+          knowledge: [
+            { topic: '插件落盘', summary: '本地 link 安装的 bundle 解析不了裸依赖；走 ctx.storage 的 KV facet 或手写 Standard Schema', at: '2026-11-04' },
+            { topic: '客户端产物缓存', summary: '改 client.js 后必须重新激活插件，combo bundle 才会换 rev', at: '2026-11-04' },
+          ],
+          projects: ['proj-dsh-plugins'],
+        },
+      ],
+      projects: [
+        {
+          id: 'proj-dsh-plugins', title: 'DSH 插件体系', class: '工具类项目', pmId: 'pm-tools',
+          workspaceId: 'DSH插件', status: 'executing',
+          goal: '把 Super-agent 调度范式与 Munk 治理范式落到 DSH',
+          positionIds: ['pos-eng', 'pos-qa', 'pos-content'],
+          workItems: ['Router / 工单 / 硬闸 / 工作包 / 落盘 / 审批通道'],
+          deliverable: '', ceaReview: '', chairmanDecision: '',
+        },
+        {
+          id: 'proj-company', title: 'Agent 公司化改造', class: '工具类项目', pmId: 'pm-tools',
+          workspaceId: '', status: 'acceptance',
+          goal: '从「项目可视化 + 多 Agent 管理」升级为公司制运作',
+          positionIds: ['pos-eng', 'pos-content'],
+          workItems: ['组织层设计', '两级视图', '董事长验收闭环'],
+          deliverable: 'AgentCompany-方案.md + 公司总览面板 + /company 命令族',
+          ceaReview: 'CEA 自审：组织层、岗位 JD、PM 知识、验收闭环已成形；跨工作区联邦执行留待下一阶段。',
+          chairmanDecision: '',
+        },
+      ],
+      decisions: [
+        {
+          id: 'dec-1', kind: 'position', subject: '新岗位：数据分析师',
+          detail: 'JD：负责指标口径、数据采集与效果复盘；技能：SQL / 指标建模 / 可视化；边界：不改线上配置；验收：口径文档 + 复盘报告。CEA 依据「项目越来越多、需要量化验收」提出。',
+          status: 'pending', projectId: '', positionId: 'pos-data', createdAt: '2026-11-04',
+        },
+        {
+          id: 'dec-2', kind: 'deliverable', subject: '验收：Agent 公司化改造',
+          detail: '成果：AgentCompany-方案.md、公司总览面板、/company 命令族、董事长验收闭环。CEA 已自审。请董事长审核通过才算完成。',
+          status: 'pending', projectId: 'proj-company', positionId: '', createdAt: '2026-11-04',
+        },
+      ],
+      events: [
+        { kind: 'company', text: '公司成立：董事长 → CEA → 3 个岗位 + 1 位 PM', at: '2026-11-04' },
+        { kind: 'position', text: 'CEA 提请新岗位「数据分析师」JD，待董事长确认', at: '2026-11-04' },
+        { kind: 'deliverable', text: 'CEA 提交「Agent 公司化改造」成果，待董事长验收', at: '2026-11-04' },
+      ],
+    }
+  }
+
+  /** Serialise company writes: the KV backend allows one live handle per unit. */
+  let companyQueue = Promise.resolve()
+  function enqueueCompany(task) {
+    const run = companyQueue.then(task, task)
+    companyQueue = run.then(() => {}, () => {})
+    return run
+  }
+
+  async function withCompanyStore(operation) {
+    const hub = optionalService('storage')
+    const backend = hub?.backend?.get('json')
+    const facet = backend?.kv
+    if (!facet) throw new Error('the json storage backend is not available')
+    const unit = await facet.open({
+      name: COMPANY_UNIT,
+      version: 1,
+      tables: COMPANY_TABLES,
+      hasGlobal: false,
+      layout: 'per-record',
+    })
+    try {
+      return await operation(unit)
+    } finally {
+      await unit.close().catch(() => {})
+    }
+  }
+
+  function companyStamp() {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  function companyEvent(state, kind, text, extra) {
+    state.events.unshift({ kind, text, at: companyStamp(), ...(extra || {}) })
+    if (state.events.length > 60) state.events.length = 60
+  }
+
+  /** The whole org state, seeded on first use. */
+  async function readCompany() {
+    return await enqueueCompany(() => withCompanyStore(async (unit) => {
+      const { tables } = await unit.loadAll()
+      const record = tables?.org?.main
+      if (record && record.version === 1) return record.value ?? record
+      const seeded = seedCompany()
+      await unit.putRecord('org', 'main', seeded)
+      return seeded
+    }))
+  }
+
+  async function writeCompany(state) {
+    return await enqueueCompany(() => withCompanyStore((unit) =>
+      unit.putRecord('org', 'main', state)))
+  }
+
+  /** CEA 立案：复述需求并请董事长确认，确认前不派工。 */
+  async function companyBrief(task) {
+    const state = await readCompany()
+    const id = `proj-${Date.now()}`
+    state.projects.push({
+      id, title: task.slice(0, 40) || '新任务', class: '未分类', pmId: state.pms[0]?.id ?? '',
+      workspaceId: '', status: 'confirming', goal: task, positionIds: [], workItems: [],
+      deliverable: '', ceaReview: '', chairmanDecision: '',
+    })
+    const decId = `dec-${Date.now()}`
+    state.decisions.unshift({
+      id: decId, kind: 'requirement', subject: `需求确认：${task.slice(0, 30)}`,
+      detail: `CEA 的理解：${task}\n请董事长确认或补充；确认后 CEA 才拆任务、派到岗位。`,
+      status: 'pending', projectId: id, positionId: '', createdAt: companyStamp(),
+    })
+    companyEvent(state, 'requirement', `CEA 复述需求并请董事长确认：${task.slice(0, 40)}`, { projectId: id })
+    await writeCompany(state)
+    return { projectId: id, decisionId: decId, status: 'confirming' }
+  }
+
+  /** CEA 设计岗位 JD，必须董事长批准才生效。 */
+  async function companyPosition(name, mission) {
+    const state = await readCompany()
+    const decId = `dec-${Date.now()}`
+    state.decisions.unshift({
+      id: decId, kind: 'position', subject: `新岗位：${name}`,
+      detail: `JD 草案：${mission}。CEA 依据当前任务缺口提出，批准后才任命 Leader 并转入 active。`,
+      status: 'pending', projectId: '', positionId: `pos-${Date.now()}`, createdAt: companyStamp(),
+    })
+    companyEvent(state, 'position', `CEA 提请新岗位「${name}」JD，待董事长确认`, { positionId: `pos-${Date.now()}` })
+    await writeCompany(state)
+    return { decisionId: decId, status: 'pending' }
+  }
+
+  /** CEA 派工到岗位（不是派到个人）。 */
+  async function companyDispatch(projectId, positionId, work) {
+    const state = await readCompany()
+    const project = state.projects.find((p) => p.id === projectId)
+    const position = state.positions.find((p) => p.id === positionId)
+    if (!project) throw new Error(`没有项目 ${projectId}`)
+    if (!position || position.status !== 'active') throw new Error(`岗位 ${positionId} 未生效`)
+    project.workItems.push(work)
+    project.status = 'executing'
+    position.load += 1
+    // 活多 → Leader 招临时员工；活少 → Leader 自己干。这里只记决策，实际
+    // 招人由 Leader 用 ctx.subagents.startActivation（下一阶段接上）。
+    const staffing = position.load >= 3 ? 'hire' : 'direct'
+    companyEvent(state, 'dispatch', `CEA 派「${work}」→ ${position.name}（${staffing === 'hire' ? 'Leader 招临时员工' : 'Leader 直接干'}）`, { projectId, positionId })
+    await writeCompany(state)
+    return { dispatched: true, staffing, headcount: position.headcount + (staffing === 'hire' ? 1 : 0) }
+  }
+
+  /** CEA 终审后提交董事长验收。 */
+  async function companyDeliver(projectId, deliverable, review) {
+    const state = await readCompany()
+    const project = state.projects.find((p) => p.id === projectId)
+    if (!project) throw new Error(`没有项目 ${projectId}`)
+    project.deliverable = deliverable
+    project.ceaReview = review
+    project.status = 'acceptance'
+    const decId = `dec-${Date.now()}`
+    state.decisions.unshift({
+      id: decId, kind: 'deliverable', subject: `验收：${project.title}`,
+      detail: `成果：${deliverable}\nCEA 自审：${review}\n请董事长审核通过才算完成。`,
+      status: 'pending', projectId, positionId: '', createdAt: companyStamp(),
+    })
+    companyEvent(state, 'deliverable', `CEA 提交「${project.title}」成果，待董事长验收`, { projectId })
+    await writeCompany(state)
+    return { decisionId: decId, status: 'acceptance' }
+  }
+
+  /**
+   * 董事长拍板。只有人能走这条路：模型工具集里没有 approve / reject，
+   * 命令走 composer；与「CEA 代拍板有边界，最终成果必须董事长验收」一致。
+   */
+  async function companyDecide(decisionId, approve, reason) {
+    const state = await readCompany()
+    const decision = state.decisions.find((d) => d.id === decisionId)
+    if (!decision) throw new Error(`没有决策 ${decisionId}`)
+    if (decision.status !== 'pending') throw new Error(`决策 ${decisionId} 已 ${decision.status}`)
+    decision.status = approve ? 'approved' : 'rejected'
+    decision.decidedAt = companyStamp()
+    decision.reason = reason || ''
+    if (approve && decision.kind === 'position') {
+      const name = decision.subject.replace(/^新岗位：/, '')
+      state.positions.push({
+        id: decision.positionId, name, status: 'active',
+        jd: { mission: decision.detail, responsibilities: [], skills: [], boundaries: [], acceptance: '由 CEA 与董事长共同确认' },
+        leader: { name: `${decision.positionId}-lead`, capabilities: [] },
+        headcount: 1, load: 0,
+      })
+    }
+    if (approve && decision.kind === 'requirement') {
+      const project = state.projects.find((p) => p.id === decision.projectId)
+      if (project) project.status = 'executing'
+    }
+    if (decision.kind === 'deliverable') {
+      const project = state.projects.find((p) => p.id === decision.projectId)
+      if (project) {
+        project.chairmanDecision = approve ? 'accepted' : 'rejected'
+        project.status = approve ? 'accepted' : 'executing'
+      }
+    }
+    companyEvent(state, approve ? 'approved' : 'rejected',
+      `董事长${approve ? '批准' : '驳回'}：${decision.subject}${reason ? `（${reason}）` : ''}`, { decisionId })
+    await writeCompany(state)
+    return { decisionId, status: decision.status }
+  }
+
+  /** Resolve which workspace/session this command is being viewed from. */
+  function companyCurrent(sessionId) {
+    const registry = optionalService('workspaceRegistry')
+    const workspaces = registry?.list?.() ?? []
+    const match = workspaces.find((workspace) => {
+      const ids = workspace.sessionIds ?? workspace.sessions?.map((entry) =>
+        typeof entry === 'string' ? entry : entry?.sessionId) ?? []
+      return ids.includes(sessionId)
+    })
+    return {
+      sessionId: sessionId ?? null,
+      workspaceId: match ? (match.id ?? match.workspaceId ?? '') : '',
+      workspaceTitle: match ? (match.title ?? '') : '',
+    }
+  }
+
+  /** The state the two company views render. */
+  async function companySnapshot(sessionId) {
+    const state = await readCompany()
+    return { ...state, _current: companyCurrent(sessionId) }
+  }
+
+  /** Handle one `/company` command line. Shared by the composer and the panel. */
+  async function companyCommand(line, sessionId) {
+    const [verb = '', ...rest] = String(line || '').trim().split(/\s+/)
+    const arg = rest.join(' ').trim()
+    const parts = arg.split('|').map((x) => x.trim()).filter(Boolean)
+    switch (verb) {
+      case '':
+      case 'state': {
+        return { kind: 'success', text: JSON.stringify(await companySnapshot(sessionId)) }
+      }
+      case 'brief': {
+        if (!arg) return { kind: 'error', text: 'brief needs a task.' }
+        const r = await companyBrief(arg)
+        return { kind: 'success', text: `CEA 已立案并复述需求，待董事长确认（决策 ${r.decisionId}）。` }
+      }
+      case 'position': {
+        if (!parts[0]) return { kind: 'error', text: 'position needs <name> | <JD>' }
+        const r = await companyPosition(parts[0], parts.slice(1).join(' | ') || parts[0])
+        return { kind: 'success', text: `CEA 已起草岗位 JD，待董事长确认（决策 ${r.decisionId}）。` }
+      }
+      case 'dispatch': {
+        if (parts.length < 3) return { kind: 'error', text: 'dispatch needs <projectId> | <positionId> | <work>' }
+        const r = await companyDispatch(parts[0], parts[1], parts.slice(2).join(' | '))
+        return { kind: 'success', text: `已派到岗位（${r.staffing === 'hire' ? 'Leader 招临时员工' : 'Leader 直接干'}）。` }
+      }
+      case 'deliver': {
+        if (parts.length < 2) return { kind: 'error', text: 'deliver needs <projectId> | <成果> | [自审]' }
+        const r = await companyDeliver(parts[0], parts[1], parts.slice(2).join(' | ') || 'CEA 自审通过。')
+        return { kind: 'success', text: `CEA 已提交成果，待董事长验收（决策 ${r.decisionId}）。` }
+      }
+      case 'approve':
+      case 'reject': {
+        if (!parts[0]) return { kind: 'error', text: `${verb} needs a decision id.` }
+        const r = await companyDecide(parts[0], verb === 'approve', parts.slice(1).join(' | '))
+        return { kind: 'success', text: `决策 ${r.decisionId} → ${r.status}。` }
+      }
+      case 'reset': {
+        await writeCompany(seedCompany())
+        return { kind: 'success', text: '公司状态已重置为演示组织架构。' }
+      }
+      default:
+        return { kind: 'error', text: `Unknown /company verb "${verb}". Use state / brief / position / dispatch / deliver / approve / reject / reset.` }
+    }
+  }
 
   // --------------------------------------------------------- Public API ---
 

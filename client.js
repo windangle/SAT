@@ -28,6 +28,43 @@ window.__ModuleLoader__.load({
         awaitingHuman: 'waiting for a human',
         workItems: 'Work board',
         ledger: 'Router ledger',
+        company: 'Company',
+        companyTitle: 'SuperAgent Company',
+        chairmanDesk: "Chairman's desk",
+        ceaLabel: 'CEA · Chief Executive Agent',
+        ceaNote: 'The Chairman talks only to the CEA. The CEA confirms requirements, designs positions, dispatches to positions, reviews the final output, and submits it for the Chairman\'s acceptance. Final delivery is complete only after the Chairman approves it.',
+        decisions: 'Awaiting your decision',
+        requirement: 'Requirement',
+        position: 'Position / JD',
+        deliverable: 'Delivery acceptance',
+        approve: 'Approve',
+        reject: 'Reject',
+        orgChart: 'Organisation',
+        positions: 'Positions',
+        pms: 'PM & project portfolio',
+        leader: 'Leader',
+        capabilities: 'capability entries',
+        headcount: 'headcount',
+        load: 'load',
+        active: 'active',
+        proposed: 'proposed',
+        events: 'Company activity',
+        project: 'Project',
+        projectView: 'Project view',
+        projects: 'Projects',
+        noProjects: 'No project bound to this workspace yet.',
+        status: 'Status',
+        goal: 'Goal',
+        deliverableLabel: 'Deliverable',
+        ceaReview: 'CEA review',
+        chairmanDecision: 'Chairman decision',
+        accepted: 'accepted',
+        pendingAcceptance: 'pending acceptance',
+        briefPlaceholder: 'Give the CEA a task (strategic or very specific)…',
+        brief: 'Brief the CEA',
+        briefHint: 'The CEA restates its understanding and waits for your confirmation before dispatching.',
+        noCompanyChannel: 'Open any conversation to load the company state.',
+        refresh: 'Refresh',
         completions: 'Recently completed',
         alerts: 'Watchdog alerts',
         intakeTitle: 'Dispatch work',
@@ -69,6 +106,43 @@ window.__ModuleLoader__.load({
         awaitingHuman: '等待人工确认',
         workItems: '工作看板',
         ledger: '调度流水',
+        company: '公司',
+        companyTitle: 'SuperAgent 公司',
+        chairmanDesk: '董事长待办',
+        ceaLabel: 'CEA · 首席执行 Agent',
+        ceaNote: '董事长只与 CEA 对接。CEA 理解并确认需求、设计岗位、按任务派到岗位、对最终产出审核负责，再交付董事长验收；成果必须董事长审核通过才算完成。',
+        decisions: '待你拍板',
+        requirement: '需求确认',
+        position: '岗位 / JD',
+        deliverable: '成果验收',
+        approve: '批准',
+        reject: '驳回',
+        orgChart: '组织架构',
+        positions: '岗位',
+        pms: 'PM 与项目组合',
+        leader: 'Leader',
+        capabilities: '条能力',
+        headcount: '在岗',
+        load: '负载',
+        active: '在编',
+        proposed: '待批',
+        events: '公司动态',
+        project: '项目',
+        projectView: '项目视图',
+        projects: '项目',
+        noProjects: '本工作区还没有项目。',
+        status: '状态',
+        goal: '目标',
+        deliverableLabel: '成果',
+        ceaReview: 'CEA 终审',
+        chairmanDecision: '董事长验收',
+        accepted: '已验收',
+        pendingAcceptance: '待验收',
+        briefPlaceholder: '给 CEA 派一个任务（大方向或很具体都行）…',
+        brief: '给 CEA 派任务',
+        briefHint: 'CEA 会先复述理解并等你确认，确认后才派工。',
+        noCompanyChannel: '打开任意会话后即可看到公司状态。',
+        refresh: '刷新',
         completions: '最近完成',
         alerts: '看门狗告警',
         intakeTitle: '派活',
@@ -130,6 +204,29 @@ window.__ModuleLoader__.load({
       .sat-member-desc { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px;
         overflow-wrap: anywhere; }
       .sat-member-status { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-co { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
+      .sat-co, .sat-co * { box-sizing: border-box; }
+      .sat-co-head { padding: 18px 22px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+      .sat-co-title { font-size: 17px; font-weight: 600; }
+      .sat-co-sub { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+      .sat-co-cea { margin-top: 10px; padding: 10px 12px; border-radius: 9px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); font-size: 12px; line-height: 1.6; }
+      .sat-co-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 22px 120px; }
+      .sat-co-sect { margin-top: 18px; }
+      .sat-co-h { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+      .sat-co-count { font-size: 10px; background: var(--dsw-alias-bg-layer-2); border-radius: 999px; padding: 1px 7px; }
+      .sat-co-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+      .sat-co-card { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 11px 13px; min-width: 0; }
+      .sat-co-card.warn { border-color: var(--dsw-alias-state-warn-primary); }
+      .sat-co-card-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+      .sat-co-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 5px; line-height: 1.6; overflow-wrap: anywhere; }
+      .sat-co-chip { display: inline-block; font-size: 10px; border-radius: 4px; padding: 0 6px; background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1); margin-right: 5px; }
+      .sat-co-chip[data-tone="warn"] { color: var(--dsw-alias-state-warn-primary); }
+      .sat-co-chip[data-tone="ok"] { color: var(--dsw-alias-state-success-primary); }
+      .sat-co-acts { display: flex; gap: 7px; margin-top: 10px; }
+      .sat-co-textarea { width: 100%; resize: vertical; min-height: 58px; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--dsw-alias-label-primary); font-family: inherit; outline: none; }
+      .sat-co-textarea:focus { border-color: var(--dsw-alias-brand-primary); }
+      .sat-co-row { display: flex; gap: 8px; align-items: flex-start; }
+      .sat-co-ev { font-size: 11px; color: var(--dsw-alias-label-secondary); padding: 5px 9px; border-left: 2px solid var(--dsw-alias-border-l2); margin-bottom: 5px; overflow-wrap: anywhere; }
       .sat-package { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
         border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
       .sat-package-head { display: flex; align-items: center; gap: 10px; }
@@ -534,6 +631,254 @@ window.__ModuleLoader__.load({
       }));
     }
 
+    /** The company is profile-wide, so the global panel needs a live session
+     *  to run the /company command against. We take the first running session
+     *  from the shared session snapshot. */
+    function useCompanyAnchor(useSessions) {
+      return useSessions((state) => {
+        const byId = state.byId || {};
+        const ids = Object.keys(byId);
+        return ids.find((id) => byId[id] && byId[id].running) || ids[0] || null;
+      });
+    }
+
+    /** Shared company state + command runner for the two company views. */
+    function useCompanyState(ctx, sessionId) {
+      const [state, setState] = React.useState(null);
+      const [error, setError] = React.useState(null);
+      const [busy, setBusy] = React.useState(false);
+
+      const call = React.useCallback(async (line) => {
+        const commands = ctx && ctx.remote && ctx.remote.commands;
+        if (!commands || !sessionId) return null;
+        const controller = new AbortController();
+        try {
+          const raw = await commands.execute(sessionId, line, [], controller.signal);
+          return extractText(raw);
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+          return null;
+        }
+      }, [ctx, sessionId]);
+
+      const reload = React.useCallback(async () => {
+        const text = await call('/company state');
+        if (!text) return;
+        try {
+          const parsed = JSON.parse(text);
+          setState(parsed);
+          setError(null);
+        } catch {
+          setError('The Host returned an unreadable company snapshot.');
+        }
+      }, [call]);
+
+      React.useEffect(() => {
+        reload();
+        const timer = setInterval(reload, 15000);
+        return () => clearInterval(timer);
+      }, [reload]);
+
+      const run = React.useCallback(async (line) => {
+        setBusy(true);
+        await call(line);
+        setBusy(false);
+        await reload();
+      }, [call, reload]);
+
+      return { state, error, busy, reload, run };
+    }
+
+    const DECISION_LABEL = { requirement: 'requirement', position: 'position', deliverable: 'deliverable' };
+
+    function DecisionCard({ decision, t, busy, onDecide }) {
+      const kindLabel = t(DECISION_LABEL[decision.kind] || 'requirement');
+      return h('div', { className: 'sat-co-card warn' },
+        h('div', { className: 'sat-co-card-title' }, decision.subject),
+        h('div', { className: 'sat-co-meta' },
+          h('span', { className: 'sat-co-chip', 'data-tone': 'warn' }, kindLabel),
+          h('span', { className: 'sat-co-chip' }, decision.status),
+          h('span', { className: 'sat-co-chip' }, decision.createdAt)),
+        h('div', { className: 'sat-co-meta' }, decision.detail),
+        h('div', { className: 'sat-co-acts' },
+          h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: busy,
+            onClick: () => onDecide('/company approve ' + decision.id) }, t('approve')),
+          h('button', { type: 'button', className: 'sat-btn sat-btn-danger', disabled: busy,
+            onClick: () => onDecide('/company reject ' + decision.id) }, t('reject'))));
+    }
+
+    function PositionCard({ position, t }) {
+      const caps = (position.leader && position.leader.capabilities) || [];
+      const jd = position.jd || {};
+      return h('div', { className: 'sat-co-card' },
+        h('div', { className: 'sat-co-card-title' }, position.name),
+        h('div', { className: 'sat-co-meta' },
+          h('span', { className: 'sat-co-chip', 'data-tone': position.status === 'active' ? 'ok' : 'warn' },
+            position.status === 'active' ? t('active') : t('proposed')),
+          h('span', { className: 'sat-co-chip' }, t('leader') + ': ' + ((position.leader && position.leader.name) || '—')),
+          h('span', { className: 'sat-co-chip' }, t('headcount') + ' ' + position.headcount),
+          h('span', { className: 'sat-co-chip' }, t('load') + ' ' + position.load)),
+        h('div', { className: 'sat-co-meta' }, jd.mission || ''),
+        h('div', { className: 'sat-co-meta' }, t('capabilities') + ': ' + caps.length + (caps.length ? ' · ' + caps.map((c) => c.skill).join(' / ') : '')),
+      );
+    }
+
+    /** Sidebar icon for the company overview (owner props: size, active). */
+    function CompanyIcon({ size, active }) {
+      return h('svg', {
+        viewBox: '0 0 24 24', width: size, height: size, 'aria-hidden': true,
+        style: { display: 'block', color: active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-secondary)' },
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round',
+      },
+        h('path', { d: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M8 10h.01M12 10h.01M16 10h.01' }),
+      );
+    }
+
+    /** Global company overview: the entry above the workspace list. */
+    function CompanyPanel({ useSessions }) {
+      const ctx = CONTEXT_REF.current;
+      const t = translate || makeTranslator();
+      const sessionId = useCompanyAnchor(useSessions);
+      const company = useCompanyState(ctx, sessionId);
+      const [draft, setDraft] = React.useState('');
+      const state = company.state || {};
+      const decisions = (state.decisions || []).filter((d) => d.status === 'pending');
+      const positions = state.positions || [];
+      const pms = state.pms || [];
+      const projects = state.projects || [];
+      const events = state.events || [];
+
+      const brief = () => {
+        const text = draft.trim();
+        if (!text) return;
+        setDraft('');
+        company.run('/company brief ' + text);
+      };
+
+      const head = h('div', { className: 'sat-co-head' }, [
+        h('div', { className: 'sat-co-title' }, (state.company && state.company.name) || t('companyTitle')),
+        h('div', { className: 'sat-co-sub' },
+          t('chairmanDesk') + ' · ' + (state.company && state.company.chairman ? state.company.chairman : '') + ' · ' + projects.length + ' ' + t('projects') + ' · ' + decisions.length + ' ' + t('decisions')),
+        h('div', { className: 'sat-co-cea' }, [
+          h('strong', null, t('ceaLabel')),
+          h('div', null, t('ceaNote')),
+        ]),
+      ]);
+
+      const briefSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('brief'), h('span', { className: 'sat-co-count' }, 'CEA')]),
+        h('div', { className: 'sat-co-row' }, [
+          h('textarea', {
+            className: 'sat-co-textarea', value: draft, placeholder: t('briefPlaceholder'),
+            onChange: (e) => setDraft(e.target.value),
+            onKeyDown: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); brief(); } },
+          }),
+          h('button', { type: 'button', className: 'sat-btn sat-btn-primary', disabled: company.busy || !sessionId, onClick: brief }, t('brief')),
+        ]),
+        h('div', { className: 'sat-co-meta' }, t('briefHint')),
+      ]);
+
+      const decisionSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('chairmanDesk'), h('span', { className: 'sat-co-count' }, String(decisions.length))]),
+        decisions.length
+          ? h('div', { className: 'sat-co-grid' }, decisions.map((d) =>
+              h(DecisionCard, { key: d.id, decision: d, t, busy: company.busy, onDecide: company.run })))
+          : h('div', { className: 'sat-empty' }, t('empty')),
+      ]);
+
+      const orgSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('orgChart') + ' · ' + t('positions'), h('span', { className: 'sat-co-count' }, String(positions.length))]),
+        h('div', { className: 'sat-co-grid' }, positions.map((p) => h(PositionCard, { key: p.id, position: p, t }))),
+      ]);
+
+      const pmSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('pms'), h('span', { className: 'sat-co-count' }, String(pms.length))]),
+        h('div', { className: 'sat-co-grid' }, pms.map((pm) =>
+          h('div', { className: 'sat-co-card', key: pm.id }, [
+            h('div', { className: 'sat-co-card-title' }, pm.name),
+            h('div', { className: 'sat-co-meta' }, t('project') + ' ' + t('status') + ': ' + pm.class),
+            h('div', { className: 'sat-co-meta' }, (pm.knowledge || []).map((k) => '· ' + k.topic).join('  ')),
+            h('div', { className: 'sat-co-meta' }, (pm.projects || []).length + ' ' + t('projects')),
+          ]))),
+      ]);
+
+      const projectSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('projects'), h('span', { className: 'sat-co-count' }, String(projects.length))]),
+        h('div', { className: 'sat-co-grid' }, projects.map((pr) =>
+          h('div', { className: 'sat-co-card', key: pr.id }, [
+            h('div', { className: 'sat-co-card-title' }, pr.title),
+            h('div', { className: 'sat-co-meta' }, t('status') + ': ' + pr.status + ' · PM: ' + (pr.pmId || '—')),
+            h('div', { className: 'sat-co-meta' }, t('goal') + ': ' + (pr.goal || '')),
+            pr.deliverable ? h('div', { className: 'sat-co-meta' }, t('deliverableLabel') + ': ' + pr.deliverable) : null,
+            pr.chairmanDecision ? h('div', { className: 'sat-co-meta' }, t('chairmanDecision') + ': ' + pr.chairmanDecision) : null,
+          ]))),
+      ]);
+
+      const eventSection = h('div', { className: 'sat-co-sect' }, [
+        h('div', { className: 'sat-co-h' }, [t('events'), h('button', { type: 'button', className: 'sat-btn', onClick: company.reload }, t('refresh'))]),
+        events.slice(0, 12).map((e, i) =>
+          h('div', { className: 'sat-co-ev', key: i }, e.at + ' · ' + e.text)),
+      ]);
+
+      const notices = [
+        company.error ? h('div', { className: 'sat-notice', 'data-tone': 'warn', key: 'err' }, company.error) : null,
+        !sessionId ? h('div', { className: 'sat-notice', 'data-tone': 'warn', key: 'no-session' }, t('noCompanyChannel')) : null,
+      ];
+
+      const body = h('div', { className: 'sat-co-body' }, notices.concat([
+        briefSection, decisionSection, orgSection, pmSection, projectSection, eventSection,
+      ]));
+
+      return h('div', { className: 'sat-co' }, [h('style', null, css), head, body]);
+    }
+
+    /** Per-workspace project view: inside each conversation, filtered to that project. */
+    function ProjectView({ sessionId, useSessions }) {
+      const ctx = CONTEXT_REF.current;
+      const t = translate || makeTranslator();
+      const company = useCompanyState(ctx, sessionId);
+      const state = company.state || {};
+      const current = state._current || {};
+      const workspaceId = current.workspaceId || '';
+      const projects = state.projects || [];
+      const normalize = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
+      const keys = [workspaceId, current.workspaceTitle].map(normalize).filter(Boolean);
+      const mine = keys.length
+        ? projects.filter((p) => keys.includes(normalize(p.workspaceId)))
+        : projects.filter((p) => !p.workspaceId);
+
+      const head = h('div', { className: 'sat-co-head' }, [
+        h('div', { className: 'sat-co-title' }, t('projectView')),
+        h('div', { className: 'sat-co-sub' }, (current.workspaceTitle || '') + (workspaceId ? ' · ' + workspaceId : '')),
+      ]);
+
+      const cards = mine.length
+        ? h('div', { className: 'sat-co-grid' }, mine.map((pr) =>
+            h('div', { className: 'sat-co-card', key: pr.id }, [
+              h('div', { className: 'sat-co-card-title' }, pr.title),
+              h('div', { className: 'sat-co-meta' }, t('status') + ': ' + pr.status),
+              h('div', { className: 'sat-co-meta' }, t('goal') + ': ' + (pr.goal || '')),
+              (pr.workItems || []).length
+                ? h('div', { className: 'sat-co-meta' }, (pr.workItems || []).map((w) => '· ' + w).join('  '))
+                : null,
+              pr.deliverable ? h('div', { className: 'sat-co-meta' }, t('deliverableLabel') + ': ' + pr.deliverable) : null,
+              pr.ceaReview ? h('div', { className: 'sat-co-meta' }, t('ceaReview') + ': ' + pr.ceaReview) : null,
+              h('div', { className: 'sat-co-meta' },
+                h('span', {
+                  className: 'sat-co-chip',
+                  'data-tone': pr.chairmanDecision === 'accepted' ? 'ok' : 'warn',
+                }, pr.chairmanDecision === 'accepted' ? t('accepted') : t('pendingAcceptance'))),
+            ])))
+        : h('div', { className: 'sat-empty' }, t('noProjects'));
+
+      const body = h('div', { className: 'sat-co-body' }, [
+        company.error ? h('div', { className: 'sat-notice', 'data-tone': 'warn' }, company.error) : null,
+        cards,
+      ]);
+
+      return h('div', { className: 'sat-co' }, [h('style', null, css), head, body]);
+    }
+
     function TeamView({ sessionId, useSession, useSessions }) {
       const t = translate || makeTranslator();
       const [draft, setDraft] = React.useState('');
@@ -726,6 +1071,33 @@ window.__ModuleLoader__.load({
             try { return translate ? translate('viewLabel') : 'Team'; } catch { return 'Team'; }
           },
         }, TeamView));
+
+        // Global company overview: the entry above the workspace list.
+        // sidebar.panellist + a keyed `main` panel — the same pattern as
+        // personal-workbench, but bound to the profile-wide company state.
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: 'super-agent-company',
+          order: 5,
+          label: () => {
+            try { return translate ? translate('company') : 'Company'; } catch { return 'Company'; }
+          },
+        }, CompanyIcon));
+
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: 'super-agent-company',
+        }, CompanyPanel));
+
+        // Per-workspace project view.
+        ctx.slots.inject('conversation.view', () => ctx.slots.register({
+          name: 'conversation.view',
+          id: 'super-agent-company-project',
+          order: 21,
+          label: () => {
+            try { return translate ? translate('projectView') : 'Project'; } catch { return 'Project'; }
+          },
+        }, ProjectView));
       },
     };
   },
