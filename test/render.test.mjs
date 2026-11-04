@@ -120,23 +120,34 @@ const commands = {
  * stub enforces the plugin's own `inject` list, so a lookup of an
  * undeclared service fails here exactly as it fails in the browser.
  */
+let activeLocale = 'en';
+let registeredNamespaces = new Set();
+const deferredEffects = [];
+
 function makeContext(injected, withRemote = true) {
+  registeredNamespaces = new Set();
+  activeLocale = 'en';
   const context = {
     slots: {
       inject(_key, callback) { callback(); return () => {}; },
       register(options, component) { registered = { options, component }; return () => {}; },
     },
     locale: {
+      // A namespace has to exist before bind() — the real service throws
+      // otherwise. This is what makes a deferred ctx.effect registration
+      // observable in the harness.
       register(ns, first, second) {
         if (typeof first === 'string') dictionaries[first] = second;
         else dictionaries[ns] = first;
-        return () => {};
+        registeredNamespaces.add(ns);
+        return () => { registeredNamespaces.delete(ns); };
       },
-      bind() {
+      bind(ns) {
+        if (!registeredNamespaces.has(ns)) throw new Error(`locale namespace "${ns}" is not registered`);
         return (key, params) => {
-          const table = Object.values(dictionaries)[0] || {};
-          const english = table.en || {};
-          let text = english[key] !== undefined ? english[key] : key;
+          const table = dictionaries[ns] || {};
+          const dict = table[activeLocale] || table.en || {};
+          let text = dict[key] !== undefined ? dict[key] : key;
           if (params) {
             for (const [name, value] of Object.entries(params)) {
               text = text.split('{' + name + '}').join(String(value));
@@ -150,7 +161,10 @@ function makeContext(injected, withRemote = true) {
       if (!injected.includes(name)) throw new Error(`cannot get property "${name}" without inject`);
       return undefined;
     },
-    effect(fn) { const disposer = fn(); return () => (typeof disposer === 'function' ? disposer() : undefined); },
+    // ctx.effect is deferred in the real Harness: the callback is not run
+    // at registration time. Anything needed synchronously (like a locale
+    // namespace) cannot be registered from inside it.
+    effect(fn) { deferredEffects.push(fn); return () => {}; },
     on() { return () => {}; },
   };
   // The Harness client services are a nested namespace: the leaf path must
@@ -331,6 +345,18 @@ check('the fallback maps phase to a status',
   fallbackText.slice(0, 200));
 check('the fallback maps ownerName to the owner', fallbackText.includes('tester'));
 check('the fallback shows no undefined', !fallbackText.includes('undefined'));
+
+// Regression: the locale dictionary must be registered synchronously.
+// ctx.effect is deferred here, so the old code (register inside effect →
+// bind immediately) would leave the panel on its built-in English fallback.
+activeLocale = 'zh';
+hookState.length = 0;
+const zhTree = await render();
+const zhText = textOf(zhTree).join(' ');
+check('the panel follows the Harness locale (zh)', zhText.includes('成员名册'), zhText.slice(0, 160));
+check('the panel does not stay on the English fallback',
+  !zhText.includes('Roster 3') && !zhText.includes('Work board'), zhText.slice(0, 160));
+activeLocale = 'en';
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
 process.exit(failures.length ? 1 : 0);

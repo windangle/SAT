@@ -700,13 +700,18 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         CONTEXT_REF.current = ctx;
 
-        // Register the dictionary, then prefer the framework's bound
-        // translator so the panel follows the active locale.
+        // The dictionary has to be registered *synchronously*: ctx.effect is
+        // deferred, and ctx.locale.bind() requires the namespace to exist at
+        // the moment it is called. A deferred registration would leave the
+        // panel bound to its built-in fallback, so switching the Harness
+        // language would do nothing. The disposer still belongs to the fiber.
+        let unregister = () => {};
         try {
-          ctx.effect(() => ctx.locale.register(NS, { en: DICT.en, zh: DICT.zh }), 'super-agent-team.locale()');
+          unregister = ctx.locale.register(NS, { en: DICT.en, zh: DICT.zh });
         } catch {
-          try { ctx.effect(() => ctx.locale.register(NS, 'en', DICT.en), 'super-agent-team.localeEn()'); } catch { /* no dictionary */ }
+          try { unregister = ctx.locale.register(NS, 'en', DICT.en); } catch { /* no dictionary */ }
         }
+        ctx.effect(() => unregister, 'super-agent-team.locale()');
         try {
           const bound = ctx.locale.bind(NS);
           if (typeof bound === 'function') translate = bound;
@@ -716,7 +721,10 @@ window.__ModuleLoader__.load({
           name: 'conversation.view',
           id: VIEW_ID,
           order: 20,
-          label: () => (translate ? translate('viewLabel') : 'Team'),
+          label: () => {
+            // A translation failure must never drop the whole slot entry.
+            try { return translate ? translate('viewLabel') : 'Team'; } catch { return 'Team'; }
+          },
         }, TeamView));
       },
     };
