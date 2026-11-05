@@ -1,19 +1,16 @@
-# Local-only working material — intentionally not published with the plugin.
-# The panel screenshot IS published: the README embeds it as the product shot.
-docs/*
-!docs/sat-panel.png
+# 本地设计 / 评审文档：只在本机维护，不随仓库发布
+/SuperAgentTeam-方案.md
+/AgentCompany-方案.md
+/review-*.md
 
-# Build / package artifacts
+# macOS / 编辑器噪声
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# 依赖与打包产物
 node_modules/
 *.tgz
 *.tar.gz
-
-# OS noise
-.DS_Store
-Thumbs.db
-
-# Editor / logs
-*.log
-npm-debug.log*
-.vscode/
-.idea/

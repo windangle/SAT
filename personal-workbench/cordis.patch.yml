@@ -1,0 +1,4 @@
+- insert:
+    - id: personal-workbench
+      name: '@local/personal-workbench'
+      config: {}
